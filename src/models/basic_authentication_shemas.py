@@ -7,12 +7,12 @@ from typing import Optional, Dict, List
 class Base(DeclarativeBase):
     pass
 
-class MatchCertification(Base):
-    __tablename__ = "basic_certification"
+class MatchAuthentication(Base):
+    __tablename__ = "basic_authentication"
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     username = Column(String)
-    password = Column(String)
-    team_number = Column(Integer) # 0 or 1, so we can use it as "team0" or "team1"
+    hash_password = Column(String)
+    match_team_name = Column(String) # 0 or 1, so we can use it as "team0" or "team1"
     match_id = Column(Uuid)
 
 class UserTable(Base):

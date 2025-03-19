@@ -51,10 +51,6 @@ except Exception as e:
 rest_router = APIRouter()
 
 
-# @rest_router.get("/updates")
-# async def get_updates()
-
-
 class MatchAPI:
     @staticmethod
     @rest_router.get("/get_match/{match_id}", response_model=MatchDataSchema)

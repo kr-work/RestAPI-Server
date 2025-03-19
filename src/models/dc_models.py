@@ -1,6 +1,12 @@
 from pydantic import BaseModel
+from enum import Enum
 from uuid import UUID
 from typing import Optional, Dict, List
+
+
+class MatchNameModel(str, Enum):
+    team0 = "team0"         # team0 is first attacker team at the first end
+    team1 = "team1"         # team1 is sencond attacker team at the first end
 
 
 class TournamentModel(BaseModel):
@@ -66,10 +72,6 @@ class StateModel(BaseModel):
 
     class Config:
         from_attributes = True
-
-
-class TeamNameModel(BaseModel):
-    team_name: str
 
 
 class PlayerModel(BaseModel):

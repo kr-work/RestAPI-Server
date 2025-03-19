@@ -2,11 +2,9 @@ import psycopg
 import asyncio
 import logging
 from fastapi import FastAPI
-# from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from contextlib import asynccontextmanager
 
 from src.crud import CreateData
-from src.shared_queue import queue
 from src.routers import match
 from src.routers.match import session
 from src.routers import restapi

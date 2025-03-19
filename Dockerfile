@@ -4,6 +4,8 @@ WORKDIR /app
 
 COPY . /app
 
+ENV PYTHONPATH=/app
+
 RUN apt update && apt install -y git libgomp1 libpq-dev && \
     python3 -m pip install --upgrade pip && \
     python3 -m pip install -r /app/requirements.txt && \
@@ -11,7 +13,7 @@ RUN apt update && apt install -y git libgomp1 libpq-dev && \
     rm -rf /var/lib/apt/lists/* && \
     rm -rf /root/.cache/pip
 
-CMD ["uvicorn", "src.main:app", "--reload", "--host", "0.0.0.0", "--port", "8080"]
+# CMD ["uvicorn", "src.main:app", "--reload", "--host", "0.0.0.0", "--port", "8080"]
 # CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "2"]
 # CMD ["gunicorn", "-w", "2", "-k", "uvicorn.workers.UvicornWorker", "src.main:app","--bind", "0.0.0.0:8080"]
-# CMD ["/bin/bash"]
+CMD ["/bin/bash"]

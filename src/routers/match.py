@@ -12,7 +12,6 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
 
 from src.crud import CollectID, CreateData, ReadData, UpdateData
-from src.manager import ConnectionManager
 from src.load_secrets import db_name, host, password, port, user
 from src.models.dc_models import (
     ClientDataModel,
@@ -25,7 +24,7 @@ from src.models.dc_models import (
     StateModel,
     StoneCoordinateModel,
     TeamModel,
-    TeamNameModel,
+    MatchNameModel,
     TournamentModel,
 )
 from src.models.schema_models import (
@@ -40,18 +39,16 @@ from src.models.schema_models import (
     TournamentSchema,
     TrajectorySchema,
 )
+from src.models.basic_authentication_models import MatchAuthenticationModel, UserModel
 from src.simulator import StoneSimulator
-from src.database import engine
-from src.basic_certification import BasicCertification
+from src.create_postgres_engine import engine
+from src.basic_authentication import BasicAuthentication
 
 POSTGRES_DATABASE_URL = f"postgresql://{user}:{password}@{host}:{port}/{db_name}"
-TEAM0_NAME = TeamNameModel(team_name="team0")
-TEAM1_NAME = TeamNameModel(team_name="team1")
 TEE_LINE = np.float32(38.405)
 
 match_router = APIRouter()
-logging.basicConfig(level=logging.DEBUG)
-connect_manager = ConnectionManager()
+logging.basicConfig(level=logging.INFO)
 Session = async_sessionmaker(
     autocommit=False, class_=AsyncSession, autoflush=True, bind=engine
 )
@@ -62,7 +59,7 @@ read_data = ReadData()
 create_data = CreateData()
 update_data = UpdateData()
 stone_simulator = StoneSimulator()
-basic_certification = BasicCertification()
+basic_auth = BasicAuthentication()
 
 
 def get_distance(
@@ -120,7 +117,7 @@ def calculate_score(score_list: List[int]) -> int:
 class BaseServer:
     @staticmethod
     @match_router.get("/get_match_id", response_model=UUID)
-    async def get_match_id(client_data: ClientDataModel) -> UUID:
+    async def get_match_id(client_data: ClientDataModel, valid: bool=Depends(basic_auth.check_user_data)) -> UUID:
         """Send the match_id to the client and Set up the match data
 
         Args:
@@ -241,8 +238,9 @@ class BaseServer:
 
 class DCServer:
     @staticmethod
+    @match_router.post("/store_team_config")
     async def store_team_config(
-        match_id: UUID, team_data: TeamModel
+        match_id: UUID, expected_match_team_name: MatchNameModel, team_config_data: TeamModel, user_data: UserModel = Depends(basic_auth.check_user_data)
     ):
         """Store the team configuration data in the database
 
@@ -252,22 +250,20 @@ class DCServer:
             team_number (int): Number of team0 or team1
         """
 
-        if team_number == 0:
-            await websocket.send_json(TEAM0_NAME.model_dump())
-        elif team_number == 1:
-            await websocket.send_json(TEAM1_NAME.model_dump())
+        match_team_name = await basic_auth.get_match_team_name(match_id, expected_match_team_name, user_data)
+        if match_team_name is None:
+            logging.error("This match have already been set up")
+            return None
 
-        team_config_data = await websocket.receive_json()
-        team_config_data = TeamModel(**team_config_data)
         if team_config_data.use_default_config:
             logging.info("Using default config")
-            return 1
+            return match_team_name
 
-        player1_id = uuid4()
-        player2_id = uuid4()
-        player3_id = uuid4()
-        player4_id = uuid4()
-        team_id = uuid4()
+        player1_id: UUID = uuid4()
+        player2_id: UUID = uuid4()
+        player3_id: UUID = uuid4()
+        player4_id: UUID = uuid4()
+        team_id: UUID = uuid4()
 
         player1 = PlayerSchema(
             player_id=player1_id,
@@ -310,17 +306,19 @@ class DCServer:
         )
 
         await create_data.create_team_data(team_data, session)
-        if team_number == 0:
+        if match_team_name == "team0":
             await update_data.update_first_team(
                 match_id, session, team_data
             )
             await update_data.update_next_shot_team(
                 match_id, session, team_id
             )
-        elif team_number == 1:
+            return match_team_name
+        elif match_team_name == "team1":
             await update_data.update_second_team(
                 match_id, session, team_data
             )
+            return match_team_name
 
     @staticmethod
     @match_router.get("/get_state_info")
@@ -359,10 +357,10 @@ class DCServer:
         total_shot_number: int = pre_state_data.total_shot_number + 1
         player_number: int = int(total_shot_number / 4) + 1
 
-        if team_number == 0:
+        if match_team_name == "team0":
             player_id = getattr(match_data, f"first_team_player{player_number}_id")
             team_id = match_data.first_team_id
-        elif team_number == 1:
+        elif match_team_name == "team1":
             player_id = getattr(match_data, f"second_team_plyaer{player_number}_id")
             team_id = match_data.second_team_id
 

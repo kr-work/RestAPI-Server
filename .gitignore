@@ -163,3 +163,4 @@ cython_debug/
 core/
 .txt
 !src/simulator.so
+src/*.sqlite3
