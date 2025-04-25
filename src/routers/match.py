@@ -6,7 +6,7 @@ from typing import List
 from uuid import UUID, uuid4
 from uuid6 import uuid7
 import numpy as np
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, status, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
@@ -40,9 +40,10 @@ from src.models.schema_models import (
     TrajectorySchema,
 )
 from src.models.basic_authentication_models import MatchAuthenticationModel, UserModel
-from src.simulator import StoneSimulator
 from src.create_postgres_engine import engine
-from src.basic_authentication import BasicAuthentication
+from src.score_utils import ScoreUtils
+from src.authentication.basic_authentication import BasicAuthentication
+from src.simulator import StoneSimulator
 
 POSTGRES_DATABASE_URL = f"postgresql://{user}:{password}@{host}:{port}/{db_name}"
 TEE_LINE = np.float32(38.405)
@@ -58,66 +59,16 @@ rest_router = APIRouter()
 read_data = ReadData()
 create_data = CreateData()
 update_data = UpdateData()
+score_utils = ScoreUtils()
 stone_simulator = StoneSimulator()
 basic_auth = BasicAuthentication()
 
 
-def get_distance(
-    team_number: int, x: np.float32, y: np.float32
-) -> tuple[int, np.float32]:
-    """calculate the distance of the stone from the tee
-
-    Args:
-        team_number (int): Team"0" or Team"1"
-        x (np.float32): X-coordinate of stone
-        y (np.float32): Y-coordinate of stone
-
-    Returns:
-        tuple[int, np.float32]: Team_number and distance of the stone from the tee
-    """
-    return (team_number, np.sqrt(x**2 + (y - TEE_LINE) ** 2))
-
-
-def get_score(distance_list: List[tuple[int, np.float32]]) -> tuple[int, int]:
-    """Get how many points either team scored
-
-    Args:
-        distance_list (List[tuple[int, np.float32]]): List containing the distance of each stone from the tee
-
-    Returns:
-        tuple[int, int]: The team that scored and the number of points scored
-    """
-    sort_distance_list = sorted(distance_list, key=lambda x: x[1])
-    scored_team = sort_distance_list[0][0]
-    score = 1
-
-    for team, distance in sort_distance_list[1:]:
-        if distance == sort_distance_list[0][1]:
-            score += 1
-        else:
-            break
-    return scored_team, score
-
-
-def calculate_score(score_list: List[int]) -> int:
-    """calculate the total score of the team
-
-    Args:
-        score_list (List[int]): List containing the scores for each end
-
-    Returns:
-        int: Total score of the team
-    """
-    score = 0
-    for i in range(len(score_list)):
-        score += score_list[i]
-    return score
-
 
 class BaseServer:
     @staticmethod
-    @match_router.get("/get_match_id", response_model=UUID)
-    async def get_match_id(client_data: ClientDataModel, valid: bool=Depends(basic_auth.check_user_data)) -> UUID:
+    @match_router.get("/start-match", response_model=UUID)
+    async def start_match(client_data: ClientDataModel, valid: bool=Depends(basic_auth.check_user_data)) -> UUID:
         """Send the match_id to the client and Set up the match data
 
         Args:
@@ -128,6 +79,7 @@ class BaseServer:
                     extra_end_time_limit: int
                     standard_end_count: int
                     match_name: str
+            valid (bool): Basic authentication result
 
         Returns:
             UUID: send the match_id to the client
@@ -204,8 +156,8 @@ class BaseServer:
         # Create match data
         match_data = MatchDataSchema(
             match_id=match_id,
-            first_team_name="first",
-            second_team_name="second",
+            first_team_name=None,
+            second_team_name=None,
             first_team_id="5050f20f-cf97-4fb1-bbc1-f2c9052e0d17",
             first_team_player1_id="006951d4-37b2-48eb-85a2-af9463a1e7aa",  # Set the ID of the player to be used in AI matches as default
             first_team_player2_id="006951d4-37b2-48eb-85a2-af9463a1e7aa",
@@ -238,22 +190,28 @@ class BaseServer:
 
 class DCServer:
     @staticmethod
-    @match_router.post("/store_team_config")
+    @match_router.post("/store-team-config")
     async def store_team_config(
-        match_id: UUID, expected_match_team_name: MatchNameModel, team_config_data: TeamModel, user_data: UserModel = Depends(basic_auth.check_user_data)
+        match_id: UUID, expected_match_team_name: MatchNameModel, team_config_data: TeamModel, valid = Depends(basic_auth.check_user_data)
     ):
         """Store the team configuration data in the database
 
         Args:
-            websocket (WebSocket): websocket (WebSocket): Connectors with connected client
-            match_id (UUID): ID to identify this match
-            team_number (int): Number of team0 or team1
+            match_id (UUID): To identify the match
+            expected_match_team_name (MatchNameModel):  The team name used in this match.
+                                                        If you choose team0 to select the first attacker and your opponent has not yet set up team0, you can continue to use team0, and if your opponent uses team0, you become team1. 
+            team_config_data (TeamModel): The team configuration data
+            user_data (UserModel): The user data for authentication
         """
 
-        match_team_name = await basic_auth.get_match_team_name(match_id, expected_match_team_name, user_data)
+        match_team_name = await update_data.update_match_data_with_team_name(
+            match_id, session, team_config_data.team_name, expected_match_team_name)
+
         if match_team_name is None:
-            logging.error("This match have already been set up")
-            return None
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This match has already started.",
+            )
 
         if team_config_data.use_default_config:
             logging.info("Using default config")
@@ -313,20 +271,20 @@ class DCServer:
             await update_data.update_next_shot_team(
                 match_id, session, team_id
             )
-            return match_team_name
         elif match_team_name == "team1":
             await update_data.update_second_team(
                 match_id, session, team_data
             )
-            return match_team_name
+            
+        return match_team_name
 
     @staticmethod
-    @match_router.get("/get_state_info")
+    @match_router.get("/state-info")
     async def get_state_info(match_id: UUID):
         latest_state_data = read_data.read_latest_state_data(match_id, session)
 
     @staticmethod
-    @match_router.post("/receive_shot_info")
+    @match_router.post("/shot-info")
     async def receive_shot_info(match_id: UUID, shot_info: ShotInfoModel):
         """Receive the shot information from the client
 

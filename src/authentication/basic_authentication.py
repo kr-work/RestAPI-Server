@@ -4,7 +4,6 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import Session
 from sqlalchemy import select, desc
-from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
 import secrets
 import hashlib
 import asyncio
@@ -12,9 +11,10 @@ import logging
 from uuid import UUID
 from typing import Tuple
 
-from src.models.basic_authentication_shemas import MatchAuthentication, UserTable
-from src.models.basic_authentication_models import MatchAuthenticationModel, UserModel
-from src.basic_authentication_crud import (
+from src.crud import ReadData, UpdateData
+from src.models.basic_authentication_shemas import UserTable
+from src.models.basic_authentication_models import UserModel
+from src.authentication.basic_authentication_crud import (
     CreateAuthentication,
     ReadAuthentication,
 )
@@ -25,6 +25,8 @@ basic_authentication_router = APIRouter()
 security = HTTPBasic()
 create_auth = CreateAuthentication()
 read_auth = ReadAuthentication()
+read_data = ReadData()
+update_data = UpdateData()
 
 
 class BasicAuthentication:
@@ -64,7 +66,7 @@ class BasicAuthentication:
             )
         return user_data
     
-    async def get_match_team_name(self, match_id: UUID, match_team_name: MatchNameModel, user_data: UserModel) -> MatchNameModel | None:
+    async def get_match_team_name(self, match_id: UUID, match_team_name: MatchNameModel, team_name) -> MatchNameModel | None:
         flag: Tuple[bool, bool] = await read_auth.read_match_team_name(match_id)
         logging.info(f"flag: {flag}")
         if flag == [False, False]:
@@ -78,7 +80,6 @@ class BasicAuthentication:
             return match_team_name
         else:
             return None
-
 
     async def get_team_number(self, basic_authentication: MatchAuthenticationModel) -> MatchNameModel:
         team_number = read_auth.read_basic_authentication(basic_authentication)

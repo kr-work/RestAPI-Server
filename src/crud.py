@@ -34,6 +34,44 @@ from uuid import UUID
 
 
 class UpdateData:
+
+    @staticmethod
+    async def update_match_data_with_team_name(match_id, session: AsyncSession, team_name: str, match_team_name: str) -> str | None:
+        async with session:
+            try:
+                stmt = select(Match).where(Match.match_id == match_id).with_for_update()
+                result = await session.execute(stmt)
+                result = result.scalars().first()
+
+                if result is None:
+                    return None
+                
+                your_match_team_name = None
+                
+                if result.first_team_name is None and result.second_team_name is None:
+                    if match_team_name == "team0":
+                        result.first_team_name = team_name
+                        your_match_team_name = "team0"
+                    elif match_team_name == "team1":
+                        result.second_team_name = team_name
+                        your_match_team_name = "team1"
+                elif result.first_team_name is None and result.second_team_name is not None:
+                    result.first_team_name = team_name
+                    your_match_team_name = "team0"
+                elif result.first_team_name is not None and result.second_team_name is None:
+                    result.second_team_name = team_name
+                    your_match_team_name = "team1"
+                else:
+                    return None
+                await session.commit()
+                return your_match_team_name
+
+            except Exception as e:
+                logging.error(f"Failed to update match data with team name: {e}")
+                return None
+
+            
+
     @staticmethod
     async def update_first_team(match_id: UUID, session: AsyncSession, first_team: TeamSchema):
         """Update match table with first team data
