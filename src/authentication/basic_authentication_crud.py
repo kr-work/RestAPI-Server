@@ -9,7 +9,7 @@ from typing import Tuple
 from uuid import UUID
 
 from src.models.basic_authentication_shemas import MatchAuthentication, UserTable, Base
-from src.models.basic_authentication_models import MatchAuthenticationModel, UserModel
+from src.models.basic_authentication_models import MatchAuthenticationModel, UserModel 
 from src.models.dc_models import MatchNameModel
 from src.create_sqlite_engine import engine
 from src.load_secrets import pepper_data
@@ -58,30 +58,21 @@ class CreateAuthentication:
                 logging.error(f"Error creating user data: {e}")
 
     @staticmethod
-    async def create_match_authentication(match_id: UUID, user_data: UserModel, match_team_name: MatchNameModel) -> MatchNameModel | None:
-        """Create Basic Authentication information required for the match
+    async def create_match_data(user_data: UserModel, match_id: UUID, match_team_name: str) -> None:
 
-        Args:
-            match_id (UUID): _description_
-            basic_authentication (MatchauthenticationModel): _description_
-            team_number (int): _description_
-        """        
         async with session:
             try:
-                new_basic_authentication = MatchAuthentication(
+                match_auth = MatchAuthentication(
                     username=user_data.username,
                     hash_password=user_data.hash_password,
                     match_team_name=match_team_name,
                     match_id=match_id
                 )
-                session.add(new_basic_authentication)
+                session.add(match_auth)
                 await session.commit()
 
-                return match_team_name
-
             except Exception as e:
-                logging.error(f"Error creating basic authentication: {e}")
-                return None
+                logging.error(f"Error creating match data: {e}")
 
 
 class ReadAuthentication:
@@ -116,92 +107,29 @@ class ReadAuthentication:
                 logging.error(f"Error reading user data: {e}")
                 return None
 
+
+class DeleteAuthentication:
     @staticmethod
-    async def read_match_team_name(match_id: UUID) -> Tuple[bool, bool]:
-        """Read team number for the match
+    async def delete_match_data(username: str, match_id: UUID) -> None:
+        """Delete match data for the user
 
         Args:
-            match_id (UUID): ID to identify this match
-
-        Returns:
-            Tuple[bool, bool]: True if match team name exists, False if it does not exist
+            username (str): username of the user
+            match_id (UUID): match id to delete
         """
-        logging.info(f"match_id: {match_id}")
         async with session:
             try:
                 stmt = (select(MatchAuthentication)
-                        .where(MatchAuthentication.match_id == match_id)
+                        .where(MatchAuthentication.username == username,
+                               MatchAuthentication.match_id == match_id)
                 )
                 result = await session.execute(stmt)
-                result = result.scalars().all()
-                # logging.info(f"result[0]: {result[0]}")
-                # logging.info(f"result[0].match_team_name: {result[0].match_team_name}")
-                # logging.info(f"len(result): {len(result)}")
-                if len(result) == 0:
-                    return [False, False]
-                elif len(result) == 1:
-                    if result[0].match_team_name == "team0":
-                        return [True, False]
-                    elif result[0].match_team_name == "team1":
-                        return [False, True]
-                return [True, True]
-
-            except Exception as e:
-                logging.error(f"Error reading match team name: {e}")
-
-    @staticmethod
-    async def read_basic_authentication(match_authentication: MatchAuthenticationModel) -> MatchNameModel:
-        """Read basic authentication information for the match
-
-        Args:
-            match_id (UUID): ID to identify this match
-            match_authentication (MatchAuthenticationModel): username and password
-
-        Returns:
-            int: _description_
-        """        
-        async with session:
-            try:
-                stmt = (select(MatchAuthentication)
-                        .where(MatchAuthentication.match_id == match_authentication.match_id,
-                            MatchAuthentication.username == match_authentication.username,
-                            MatchAuthentication.hash_password == match_authentication.hash_password
-                    )
-                )
-                result = await session.execute(stmt)
-                result = result.scalars().all()
-                match_team_name = result[0].team_number
-                match_team_name = MatchNameModel(match_team_name=match_team_name)
-                return match_team_name
-
-            except Exception as e:
-                logging.error(f"Error reading basic authentication: {e}")
-                return None
-            
-    @staticmethod
-    async def read_match_id(match_id: UUID) -> bool|None:
-        """Read match id to check if it exists
-
-        Args:
-            match_id (UUID): ID to identify this match
-
-        Returns:
-            bool|None: True if match id exists, False if it does not exist, None if there is an error
-        """        
-        async with session:
-            try:
-                stmt = (select(MatchAuthentication)
-                        .where(MatchAuthentication.match_id == match_id)
-                )
-                result = await session.execute(stmt)
-                result = result.scalars().all()
+                result = result.scalars().first()
                 if result is None:
-                    return False
-                return True
-            
-            except Exception as e:
-                logging.error(f"Error reading match id: {e}")
-                return None
-            
+                    logging.error("Match data not found")
+                    return None
+                await session.delete(result)
+                await session.commit()
 
-            
+            except Exception as e:
+                logging.error(f"Error deleting match data: {e}")

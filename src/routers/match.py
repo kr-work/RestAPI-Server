@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
 
-from src.crud import CollectID, CreateData, ReadData, UpdateData
+from src.crud import CreateData, ReadData, UpdateData
 from src.load_secrets import db_name, host, password, port, user
 from src.models.dc_models import (
     ClientDataModel,
@@ -39,10 +39,11 @@ from src.models.schema_models import (
     TournamentSchema,
     TrajectorySchema,
 )
-from src.models.basic_authentication_models import MatchAuthenticationModel, UserModel
+from src.models.basic_authentication_models import UserModel
 from src.create_postgres_engine import engine
 from src.score_utils import ScoreUtils
 from src.authentication.basic_authentication import BasicAuthentication
+from src.authentication.basic_authentication_crud import CreateAuthentication, ReadAuthentication, DeleteAuthentication
 from src.simulator import StoneSimulator
 
 POSTGRES_DATABASE_URL = f"postgresql://{user}:{password}@{host}:{port}/{db_name}"
@@ -59,16 +60,18 @@ rest_router = APIRouter()
 read_data = ReadData()
 create_data = CreateData()
 update_data = UpdateData()
+read_authentication = ReadAuthentication()
+create_authentication = CreateAuthentication()
+delete_authentication = DeleteAuthentication()
 score_utils = ScoreUtils()
-stone_simulator = StoneSimulator()
 basic_auth = BasicAuthentication()
-
+stone_simulator = StoneSimulator()
 
 
 class BaseServer:
     @staticmethod
     @match_router.get("/start-match", response_model=UUID)
-    async def start_match(client_data: ClientDataModel, valid: bool=Depends(basic_auth.check_user_data)) -> UUID:
+    async def start_match(client_data: ClientDataModel, user_data: UserModel=Depends(basic_auth.check_user_data)) -> UUID:
         """Send the match_id to the client and Set up the match data
 
         Args:
@@ -123,7 +126,7 @@ class BaseServer:
 
         state = StateSchema(
             state_id=uuid7(),
-            winner_team=None,
+            winner_team_id=None,
             match_id=match_id,
             end_number=0,
             shot_number=0,
@@ -192,7 +195,7 @@ class DCServer:
     @staticmethod
     @match_router.post("/store-team-config")
     async def store_team_config(
-        match_id: UUID, expected_match_team_name: MatchNameModel, team_config_data: TeamModel, valid = Depends(basic_auth.check_user_data)
+        match_id: UUID, expected_match_team_name: MatchNameModel, team_config_data: TeamModel, user_data: UserModel = Depends(basic_auth.check_user_data)
     ):
         """Store the team configuration data in the database
 
@@ -205,7 +208,14 @@ class DCServer:
         """
 
         match_team_name = await update_data.update_match_data_with_team_name(
-            match_id, session, team_config_data.team_name, expected_match_team_name)
+            match_id, session, team_config_data.team_name, expected_match_team_name
+        )
+        
+        await create_authentication.create_match_data(
+            user_data,
+            match_id,
+            match_team_name,
+        )
 
         if match_team_name is None:
             raise HTTPException(
@@ -216,64 +226,42 @@ class DCServer:
         if team_config_data.use_default_config:
             logging.info("Using default config")
             return match_team_name
-
-        player1_id: UUID = uuid4()
-        player2_id: UUID = uuid4()
-        player3_id: UUID = uuid4()
-        player4_id: UUID = uuid4()
-        team_id: UUID = uuid4()
-
-        player1 = PlayerSchema(
-            player_id=player1_id,
-            team_id=team_id,
-            max_velocity=team_config_data.player1.max_velocity,
-            shot_dispersion_rate=team_config_data.player1.shot_dispersion_rate,
-            player_name=team_config_data.player1.player_name,
-        )
-        player2 = PlayerSchema(
-            player_id=player2_id,
-            team_id=team_id,
-            max_velocity=team_config_data.player2.max_velocity,
-            shot_dispersion_rate=team_config_data.player2.shot_dispersion_rate,
-            player_name=team_config_data.player2.player_name,
-        )
-        player3 = PlayerSchema(
-            player_id=player3_id,
-            team_id=team_id,
-            max_velocity=team_config_data.player3.max_velocity,
-            shot_dispersion_rate=team_config_data.player3.shot_dispersion_rate,
-            player_name=team_config_data.player3.player_name,
-        )
-        player4 = PlayerSchema(
-            player_id=player4_id,
-            team_id=team_id,
-            max_velocity=team_config_data.player4.max_velocity,
-            shot_dispersion_rate=team_config_data.player4.shot_dispersion_rate,
-            player_name=team_config_data.player4.player_name,
-        )
-        team_data = TeamSchema(
-            player1_id=player1_id,
-            player2_id=player2_id,
-            player3_id=player3_id,
-            player4_id=player4_id,
-            team_name=team_config_data.team_name,
-            player1=player1,
-            player2=player2,
-            player3=player3,
-            player4=player4,
+        
+        team_id: UUID | None = await read_data.read_team_id(
+            team_config_data.team_name, session
         )
 
-        await create_data.create_team_data(team_data, session)
+        player_id_list: List[UUID] = []
+        for i in range(1, 5):
+            # 各チームごとに、player1, player2, player3, player4のIDを取得または生成
+            player_name = getattr(team_config_data, f"player{i}").player_name
+            player_id: UUID | None = await read_data.read_player_id(
+                player_name, team_id, session
+            )
+            if player_id is None:
+                player_id = uuid4()
+                player_data = PlayerSchema(
+                    player_id=player_id,
+                    team_id=team_id,
+                    max_velocity=getattr(team_config_data, f"player{i}").max_velocity,
+                    shot_dispersion_rate=getattr(team_config_data, f"player{i}").shot_dispersion_rate,
+                    player_name=player_name,
+                )
+                await create_data.create_player_data(player_data, session)
+                player_id_list.append(player_id)
+            else:
+                player_id_list.append(player_id)
+
         if match_team_name == "team0":
             await update_data.update_first_team(
-                match_id, session, team_data
+                match_id, session, player_id_list, team_config_data.team_name
             )
             await update_data.update_next_shot_team(
                 match_id, session, team_id
             )
         elif match_team_name == "team1":
             await update_data.update_second_team(
-                match_id, session, team_data
+                match_id, session, player_id_list, team_config_data.team_name
             )
             
         return match_team_name

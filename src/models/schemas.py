@@ -201,7 +201,7 @@ class ShotInfo(Base):
 class State(Base):
     __tablename__ = "state"
     state_id = Column(Uuid, primary_key=True, default=uuid7)
-    winner_team = Column(Uuid, nullable=True)
+    winner_team_id = Column(Uuid, nullable=True)
     match_id = Column(Uuid, default=uuid7)
     end_number = Column(Integer)
     shot_number = Column(Integer)

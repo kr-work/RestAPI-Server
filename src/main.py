@@ -1,5 +1,3 @@
-import psycopg
-import asyncio
 import logging
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
@@ -19,26 +17,9 @@ logging.basicConfig(level=logging.DEBUG)
 # notification_queue = asyncio.Queue()
 cd = CreateData()
 
-async def postgres_listener():
-    try:
-        conn = await psycopg.AsyncConnection.connect(
-            POSTGRES_DATABASE_URL, autocommit=True
-        )
-        async with conn.cursor() as cur:
-
-            # Listen for notifications
-            await cur.execute("LISTEN state_update;")
-            logging.info("Listening for notifications on channel 'state_update'...")
-
-            async for notify in conn.notifies():
-                queue.put_nowait(notify.payload)
-    except Exception as e:
-        logging.info(f"PostgreSQL connection failed: {e}")
-
 
 @asynccontextmanager
 async def lifespan(app):
-    task = asyncio.create_task(postgres_listener())
     logging.info("Listener task started")
     # Create default player data to use learning AI
     first_player = PlayerSchema(
@@ -60,11 +41,7 @@ async def lifespan(app):
     try:
         yield
     finally:
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            logging.info("Listener task was cancelled")
+        logging.info("Stop Server")
 
 
 # loop = asyncio.get_event_loop()

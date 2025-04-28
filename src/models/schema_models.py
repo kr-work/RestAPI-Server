@@ -69,7 +69,7 @@ class ShotInfoSchema(BaseModel):
 
 class StateSchema(BaseModel):
     state_id: UUID
-    winner_team: UUID | None
+    winner_team_id: UUID | None
     match_id: UUID
     end_number: int
     shot_number: int
@@ -93,8 +93,8 @@ class StateSchema(BaseModel):
 
 class MatchDataSchema(BaseModel):
     match_id: UUID
-    first_team_name: str
-    second_team_name: str
+    first_team_name: str | None
+    second_team_name: str | None
     first_team_id: UUID
     first_team_player1_id: UUID
     first_team_player2_id: UUID

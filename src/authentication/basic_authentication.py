@@ -66,26 +66,6 @@ class BasicAuthentication:
             )
         return user_data
     
-    async def get_match_team_name(self, match_id: UUID, match_team_name: MatchNameModel, team_name) -> MatchNameModel | None:
-        flag: Tuple[bool, bool] = await read_auth.read_match_team_name(match_id)
-        logging.info(f"flag: {flag}")
-        if flag == [False, False]:
-            match_team_name = await create_auth.create_match_authentication(match_id, user_data, match_team_name)
-            return match_team_name
-        elif flag == [True, False]:
-            match_team_name = await create_auth.create_match_authentication(match_id, user_data, MatchNameModel.team1)
-            return match_team_name
-        elif flag == [False, True]:
-            match_team_name = await create_auth.create_match_authentication(match_id, user_data, MatchNameModel.team0)
-            return match_team_name
-        else:
-            return None
-
-    async def get_team_number(self, basic_authentication: MatchAuthenticationModel) -> MatchNameModel:
-        team_number = read_auth.read_basic_authentication(basic_authentication)
-        return team_number
-
-
     async def store_user_data(self, user_name: str, password: str) -> None:
         await create_auth.create_user_data(user_name, password)
 
