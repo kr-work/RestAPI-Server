@@ -275,7 +275,7 @@ class ReadData:
                     second_team_extra_end_remaining_time=result.second_team_extra_end_remaining_time,
                     stone_coordinate_id=result.stone_coordinate_id,
                     shot_id=result.shot_id,
-                    next_shot_team=result.next_shot_team,
+                    next_shot_team_id=result.next_shot_team_id,
                     created_at=result.created_at,
                     stone_coordinate=stone_coordinate_data,
                 )
@@ -300,7 +300,6 @@ class ReadData:
                     .options(
                         joinedload(State.stone_coordinate),
                         joinedload(State.score),
-                        joinedload(State.shot_info),
                     )
                     .where(State.match_id == match_id)
                     .order_by(desc(State.created_at))
@@ -588,7 +587,7 @@ class CreateData:
                     stone_coordinate_id=state.stone_coordinate_id,
                     score_id=state.score_id,
                     shot_id=state.shot_id,
-                    next_shot_team=state.next_shot_team,
+                    next_shot_team_id=state.next_shot_team_id,
                     created_at=state.created_at,
                 )
                 session.add_all([new_stone_coordinate, new_state])

@@ -16,6 +16,12 @@ This is a new server for digital curling. It is a work in progress, but this ser
 ## Setup and Development
 
 1. first you need to install docker and docker-compose, then pull this repository.
+
+1. Please input this command at Linux or WSL.
+    ```bash
+    sudo sysctl -w vm.overcommit_memory=1
+    ```
+
 1. Create a `.env` file in the root of the project and add the following variables:
 
     ```bash

@@ -81,11 +81,10 @@ class StateSchema(BaseModel):
     stone_coordinate_id: UUID
     score_id: UUID
     shot_id: UUID | None
-    next_shot_team: UUID | None
+    next_shot_team_id: UUID | None
     created_at: datetime
     stone_coordinate: Optional[StoneCoordinateSchema] = None
     score: Optional[ScoreSchema] = None
-    shot_info: Optional[ShotInfoSchema] = None
 
     class Config:
         from_attributes = True

@@ -10,11 +10,13 @@ class Base(DeclarativeBase):
 
 class MatchAuthentication(Base):
     __tablename__ = "basic_authentication"
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    id = Column(Integer, primary_key=True, index=True)
     username = Column(String)
     hash_password = Column(String)
-    match_team_name = Column(String)
+    match_team_name = Column(String)    # The team name "team0" or "team1"
     match_id = Column(Uuid)
+    created_at = Column(DateTime, nullable=False)
+    expired_at = Column(DateTime, nullable=False)
 
 
 class UserTable(Base):

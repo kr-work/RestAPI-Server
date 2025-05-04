@@ -1,4 +1,25 @@
 services:
+
+  redis:
+    image: redis:7
+    networks:
+      - dc_network
+    command:
+      - redis-server
+      - --bind
+      - "0.0.0.0"
+      - --requirepass
+      - "${REDIS_PASSWORD}"             # 環境変数でパスワードを設定:contentReference[oaicite:2]{index=2}
+      - --masterauth
+      - "${REDIS_PASSWORD}"             # レプリケーション用パスワード:contentReference[oaicite:3]{index=3}
+      - --masteruser
+      - "${REDIS_USER}"                 # レプリケーション用ユーザー:contentReference[oaicite:4]{index=4}
+      - --appendonly
+      - "no"
+      - --protected-mode
+      - "yes"
+
+
   app:
     build:
       context: .

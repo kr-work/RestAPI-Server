@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS state (
     stone_coordinate_id UUID DEFAULT gen_random_uuid(),
     score_id UUID DEFAULT gen_random_uuid(),
     shot_id UUID,
-    next_shot_team UUID DEFAULT gen_random_uuid(),
+    next_shot_team_id UUID DEFAULT gen_random_uuid(),
     created_at TIMESTAMP DEFAULT NOW()
 );
 

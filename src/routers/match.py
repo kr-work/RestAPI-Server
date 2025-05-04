@@ -1,31 +1,27 @@
-import asyncio
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List
 from uuid import UUID, uuid4
 from uuid6 import uuid7
 import numpy as np
 from fastapi import APIRouter, Depends, status, HTTPException
 from fastapi.responses import StreamingResponse
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.security import HTTPBasic
 from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
+from redis.asyncio import Redis
 
+from src.load_secrets import redis_user, redis_password
 from src.crud import CreateData, ReadData, UpdateData
-from src.load_secrets import db_name, host, password, port, user
 from src.models.dc_models import (
     ClientDataModel,
     CoordinateDataModel,
-    MatchModel,
-    PhysicalSimulatorModel,
-    PlayerModel,
     ScoreModel,
     ShotInfoModel,
     StateModel,
     StoneCoordinateModel,
     TeamModel,
     MatchNameModel,
-    TournamentModel,
 )
 from src.models.schema_models import (
     MatchDataSchema,
@@ -41,13 +37,14 @@ from src.models.schema_models import (
 )
 from src.models.basic_authentication_models import UserModel
 from src.create_postgres_engine import engine
+from src.converter import DataConverter
+from src.redis_subscriber import RedisSubscriber
 from src.score_utils import ScoreUtils
 from src.authentication.basic_authentication import BasicAuthentication
 from src.authentication.basic_authentication_crud import CreateAuthentication, ReadAuthentication, DeleteAuthentication
 from src.simulator import StoneSimulator
 
-POSTGRES_DATABASE_URL = f"postgresql://{user}:{password}@{host}:{port}/{db_name}"
-TEE_LINE = np.float32(38.405)
+redis = Redis(host="redis", port=6379, decode_responses=True)
 
 match_router = APIRouter()
 logging.basicConfig(level=logging.INFO)
@@ -60,6 +57,7 @@ rest_router = APIRouter()
 read_data = ReadData()
 create_data = CreateData()
 update_data = UpdateData()
+data_converter = DataConverter()
 read_authentication = ReadAuthentication()
 create_authentication = CreateAuthentication()
 delete_authentication = DeleteAuthentication()
@@ -138,7 +136,7 @@ class BaseServer:
             stone_coordinate_id=stone_coordinates_id,
             score_id=score_id,
             shot_id=uuid7(),
-            next_shot_team="5050f20f-cf97-4fb1-bbc1-f2c9052e0d17",
+            next_shot_team_id="5050f20f-cf97-4fb1-bbc1-f2c9052e0d17",
             created_at=datetime.now(),
             stone_coordinate=stone_coordinate,
         )
@@ -185,9 +183,10 @@ class BaseServer:
             simulator=simulator,
             tournament=tournament,
         )
+
         await create_data.create_match_data(match_data, session)
         await create_data.create_state_data(state, session)
-
+        
         return match_id
 
 
@@ -267,13 +266,24 @@ class DCServer:
         return match_team_name
 
     @staticmethod
-    @match_router.get("/state-info")
-    async def get_state_info(match_id: UUID):
-        latest_state_data = read_data.read_latest_state_data(match_id, session)
+    @match_router.get("/stream/{match_id}")
+    async def stream_state_info(match_id: UUID, user_data: UserModel = Depends(basic_auth.check_user_data)):
+        
+        channel = f"match:{match_id}"
+        redis_subscriber = RedisSubscriber(Session, match_id)
+
+        return StreamingResponse(
+            redis_subscriber.event_generator(channel, redis),
+            media_type="text/event-stream; charset=utf-8",
+            headers={"Cache-Control": "no-cache",
+                     "Connection": "keep-alive"}
+        )
+
+
 
     @staticmethod
     @match_router.post("/shot-info")
-    async def receive_shot_info(match_id: UUID, shot_info: ShotInfoModel):
+    async def receive_shot_info(match_id: UUID, shot_info: ShotInfoModel, user_data: UserModel = Depends(basic_auth.check_user_data)) -> None:
         """Receive the shot information from the client
 
         Args:
@@ -281,7 +291,6 @@ class DCServer:
             shot_info (ShotInfoModel): shot information from the client
         """
         end_time: datetime = datetime.now()
-        winmer_team: UUID = None
 
         # Get match data to know simulator and team_id
         match_data: MatchDataSchema = await read_data.read_match_data(match_id, session)
@@ -290,6 +299,23 @@ class DCServer:
         pre_state_data: StateSchema = await read_data.read_latest_state_data(
             match_id, session
         )
+
+        # Get match team name to know which team is sending the shot information
+        match_team_name: str = await read_authentication.read_match_data(
+            user_data, match_id
+        )
+
+        shot_team_name: str = "team0" if pre_state_data.next_shot_team == match_data.first_team_id else "team1"
+
+        # Check if shot info which client sent is valid or not
+        if shot_team_name != match_team_name:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Not your turn.",
+            )
+        
+        winmer_team: UUID = None
+
         # stone coordinate before receiving "shot_info"
         pre_stone_coordinate_data: StoneCoordinateSchema = (
             pre_state_data.stone_coordinate
@@ -320,8 +346,11 @@ class DCServer:
         )
 
         pre_end_time: datetime = pre_state_data.created_at
-        time_diff: datetime = end_time - pre_end_time
+        time_diff: timedelta = end_time - pre_end_time
         time_diff_seconds: float = time_diff.total_seconds()
+
+        channel = f"match:{match_id}"
+        await redis.publish(channel, str(match_id))
 
     async def state_end_number_update(self, state_data: StateSchema) -> StateSchema:
         """
@@ -349,7 +378,7 @@ class DCServer:
             stone_coordinate_id=stone_coordinate.stone_coordinate_id,
             score_id=state_data.score_id,
             shot_id=uuid7(),
-            next_shot_team=self.next_shot_team_id,
+            next_shot_team_id=self.next_shot_team_id,
             created_at=datetime.now(),
             stone_coordinate=stone_coordinate,
         )

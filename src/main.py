@@ -1,7 +1,9 @@
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import logging
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 
+from src.authentication.basic_authentication_crud import DeleteAuthentication
 from src.crud import CreateData
 from src.routers import match
 from src.routers.match import session
@@ -11,7 +13,8 @@ from src.load_secrets import db_name, host, password, port, user
 
 POSTGRES_DATABASE_URL = f"postgresql://{user}:{password}@{host}:{port}/{db_name}"
 
-
+delete_auth = DeleteAuthentication()
+scheduler = AsyncIOScheduler()
 logging.basicConfig(level=logging.DEBUG)
 
 # notification_queue = asyncio.Queue()
@@ -20,7 +23,7 @@ cd = CreateData()
 
 @asynccontextmanager
 async def lifespan(app):
-    logging.info("Listener task started")
+
     # Create default player data to use learning AI
     first_player = PlayerSchema(
         player_id="006951d4-37b2-48eb-85a2-af9463a1e7aa",
@@ -38,9 +41,18 @@ async def lifespan(app):
     )
     await cd.create_default_player_data(first_player, session)
     await cd.create_default_player_data(second_player, session)
+
+    # If the match data is expired, delete the match data
+    scheduler.add_job(
+        delete_auth.delete_expired_match_data,
+        "interval",
+        hours=24,
+    )
+    scheduler.start()
     try:
         yield
     finally:
+        scheduler.shutdown()
         logging.info("Stop Server")
 
 

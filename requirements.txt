@@ -11,3 +11,5 @@ uuid6==2024.7.10
 uvicorn[standard]==0.32.1
 Gunicorn==23.0.0
 aiosqlite==0.21.0
+APScheduler==3.11.0
+redis==6.0.0

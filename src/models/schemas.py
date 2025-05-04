@@ -213,7 +213,7 @@ class State(Base):
     stone_coordinate_id = Column(Uuid, default=uuid7)
     score_id = Column(Uuid, default=uuid7)
     shot_id = Column(Uuid, nullable=True)
-    next_shot_team = Column(Uuid, default=uuid4)
+    next_shot_team_id = Column(Uuid, default=uuid4)
     created_at = Column(DateTime, default=datetime.now)
 
     match = relationship(

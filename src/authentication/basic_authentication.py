@@ -66,6 +66,29 @@ class BasicAuthentication:
             )
         return user_data
     
+    async def check_match_data(self, user_data: UserModel, match_id: UUID) -> str:
+        """Check if the match data is valid. This function is called only once before the start of the match
+
+        Args:
+            user_data (UserModel): _description_
+            match_id (UUID): _description_
+
+        Raises:
+            HTTPException: The first time the user data is checked, the user data is not found in the database
+            HTTPException: The password is incorrect
+
+        Returns:
+            bool: Basic authentication result
+        """        
+        match_data = await read_auth.read_match_data(user_data, match_id)
+        if match_data is None:
+            raise HTTPException(
+                status_code = status.HTTP_401_UNAUTHORIZED,
+                detail = "Invalid match data",
+                headers = {"WWW-Authenticate": "Basic"},
+            )
+        return match_data.match_team_name
+    # 
     async def store_user_data(self, user_name: str, password: str) -> None:
         await create_auth.create_user_data(user_name, password)
 

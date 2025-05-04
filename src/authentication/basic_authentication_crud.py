@@ -1,7 +1,7 @@
+from datetime import datetime, timedelta
 import hashlib
 import logging
 import secrets
-from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
@@ -66,7 +66,9 @@ class CreateAuthentication:
                     username=user_data.username,
                     hash_password=user_data.hash_password,
                     match_team_name=match_team_name,
-                    match_id=match_id
+                    match_id=match_id,
+                    created_at=datetime.now(),
+                    expired_at=datetime.now() + timedelta(days=14)
                 )
                 session.add(match_auth)
                 await session.commit()
@@ -106,6 +108,38 @@ class ReadAuthentication:
             except Exception as e:
                 logging.error(f"Error reading user data: {e}")
                 return None
+            
+    @staticmethod
+    async def read_match_data(user_data: UserModel, match_id: UUID) -> str:
+        """Read match data to get match team name("team0" or "team1")
+
+        Args:
+            user_data (UserModel): username and password to authenticate the user
+            match_id (UUID): To identify the match
+
+        Returns:
+            MatchAuthenticationModel: match team name and match id
+        """
+        async with session:
+            try:
+                stmt = (select(MatchAuthentication)
+                        .where(MatchAuthentication.username == user_data.username,
+                               MatchAuthentication.match_id == match_id)
+                )
+                result = await session.execute(stmt)
+                result = result.scalars().first()
+                if result is None:
+                    logging.error("Match data not found")
+                    return None
+                match = MatchAuthenticationModel(
+                    match_team_name=result.match_team_name,
+                    match_id=result.match_id
+                )
+                return match.match_team_name
+
+            except Exception as e:
+                logging.error(f"Error reading match data: {e}")
+                return None
 
 
 class DeleteAuthentication:
@@ -133,3 +167,23 @@ class DeleteAuthentication:
 
             except Exception as e:
                 logging.error(f"Error deleting match data: {e}")
+
+    @staticmethod
+    async def delete_expired_match_data() -> None:
+        """Delete expired match data"""
+        async with session:
+            try:
+                stmt = (select(MatchAuthentication)
+                        .where(MatchAuthentication.expired_at < datetime.now())
+                )
+                result = await session.execute(stmt)
+                result = result.scalars().all()
+                if result is None:
+                    logging.error("No expired match data found")
+                    return None
+                for match in result:
+                    await session.delete(match)
+                await session.commit()
+
+            except Exception as e:
+                logging.error(f"Error deleting expired match data: {e}")

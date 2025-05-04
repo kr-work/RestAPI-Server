@@ -29,10 +29,6 @@ from src.models.schema_models import (
 class DataConverter:
     """This class is used to convert data between different formats."""
 
-    def __init__(self) -> None:
-        self.first_team_id: UUID = UUID("5050f20f-cf97-4fb1-bbc1-f2c9052e0d17")
-        self.second_team_id: UUID = UUID("60e1e056-3613-4846-afc9-514ea7b6adde")
-
     def convert_stateschema_to_statemodel(self, match_data: MatchDataSchema, state_data: StateSchema) -> StateModel:
         """Convert the StateSchema to the StateModel to send client
         Args:
@@ -47,7 +43,7 @@ class DataConverter:
             winner_team_id = state_data.winner_team_id
             winner_team_name = (
                 match_data.first_team_name
-                if winner_team_id == self.first_team_id
+                if winner_team_id == match_data.first_team_id
                 else match_data.second_team_name
             )
 
@@ -55,7 +51,7 @@ class DataConverter:
             next_shot_team_id = state_data.next_shot_team_id
             next_shot_team = (
                 match_data.first_team_name
-                if next_shot_team_id == self.first_team_id
+                if next_shot_team_id == match_data.first_team_id
                 else match_data.second_team_name
             )
         
