@@ -23,7 +23,6 @@ class ScoreUtils:
         """
         return (team_number, np.sqrt(x**2 + (y - TEE_LINE) ** 2))
 
-
     def get_score(self, distance_list: List[tuple[int, np.float32]]) -> tuple[int, int]:
         """Get how many points either team scored
 
@@ -46,7 +45,6 @@ class ScoreUtils:
             else:
                 break
         return scored_stones, score
-
 
     def calculate_score(self, score_list: List[int]) -> int:
         """calculate the total score of the team

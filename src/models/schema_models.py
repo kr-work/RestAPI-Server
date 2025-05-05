@@ -67,6 +67,7 @@ class ShotInfoSchema(BaseModel):
     class Config:
         from_attributes = True
 
+
 class StateSchema(BaseModel):
     state_id: UUID
     winner_team_id: UUID | None
@@ -132,6 +133,3 @@ class TeamSchema(BaseModel):
     player2: Optional[PlayerSchema] = None
     player3: Optional[PlayerSchema] = None
     player4: Optional[PlayerSchema] = None
-
-
-

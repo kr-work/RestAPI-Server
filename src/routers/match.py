@@ -40,7 +40,11 @@ from src.converter import DataConverter
 from src.redis_subscriber import RedisSubscriber
 from src.score_utils import ScoreUtils
 from src.authentication.basic_authentication import BasicAuthentication
-from src.authentication.basic_authentication_crud import CreateAuthentication, ReadAuthentication, DeleteAuthentication
+from src.authentication.basic_authentication_crud import (
+    CreateAuthentication,
+    ReadAuthentication,
+    DeleteAuthentication,
+)
 from src.simulator import StoneSimulator
 
 redis = Redis(host="redis", port=6379, decode_responses=True, health_check_interval=30)
@@ -65,10 +69,62 @@ basic_auth = BasicAuthentication()
 stone_simulator = StoneSimulator()
 
 
+def simulate_fcv1(
+    shot_info: ShotInfoModel,
+    state_data: StateSchema,
+    total_shot_number: int,
+    shot_per_team: int,
+    team_number: int,
+) -> tuple[np.ndarray, bool, np.ndarray]:
+    """Stone simulation with fcv1 model
+
+    Args:
+        shot_info (ShotInfoModel): Adjusted shot information
+        state_data (StateSchema): The latest state data of the match
+        total_shot_number (int): Total number of shots
+        shot_per_team (int): Number of shots per team
+        team_number (int): Team"0" or Team"1"
+
+    Returns:
+        tuple[np.ndarray, bool, np.ndarray]: Simulated stone coordinate, five_lock_rule flag, trajectory
+    """
+    angle_radian = np.deg2rad(shot_info.shot_angle)
+    velocity_x = shot_info.translation_velocity * np.cos(angle_radian)
+    velocity_y = shot_info.translation_velocity * np.sin(angle_radian)
+    angular_velocity_sign = shot_info.angular_velocity_sign
+    stone_position = np.array(
+        [
+            coordinate
+            for team, stones in state_data.stone_coordinate.stone_coordinate_data.items()
+            for stone in stones
+            for coordinate in (stone["x"], stone["y"])
+        ]
+    )
+    angular_velocity_sign = 1
+    if shot_info.angular_velocity_sign == "cw":
+        angular_velocity_sign = 1
+    elif shot_info.angular_velocity_sign == "ccw":
+        angular_velocity_sign = -1
+
+    simulated_stones_coordinate, flag, trajectory = stone_simulator.simulator(
+        stone_position,
+        total_shot_number,
+        velocity_x,
+        velocity_y,
+        angular_velocity_sign,
+        team_number,
+        shot_per_team,
+    )
+    return simulated_stones_coordinate, flag, trajectory
+
+
 class BaseServer:
     @staticmethod
     @match_router.get("/start-match", response_model=UUID)
-    async def start_match(client_data: ClientDataModel, user_data: UserModel=Depends(basic_auth.check_user_data)) -> UUID:
+    async def start_match(
+        client_data: ClientDataModel,
+        user_data: UserModel = Depends(basic_auth.check_user_data),
+    ) -> UUID:
         """Send the match_id to the client and Set up the match data
 
         Args:
@@ -185,7 +241,7 @@ class BaseServer:
 
         await create_data.create_match_data(match_data, session)
         await create_data.create_state_data(state, session)
-        
+
         return match_id
 
 
@@ -193,14 +249,17 @@ class DCServer:
     @staticmethod
     @match_router.post("/store-team-config")
     async def store_team_config(
-        match_id: UUID, expected_match_team_name: MatchNameModel, team_config_data: TeamModel, user_data: UserModel = Depends(basic_auth.check_user_data)
+        match_id: UUID,
+        expected_match_team_name: MatchNameModel,
+        team_config_data: TeamModel,
+        user_data: UserModel = Depends(basic_auth.check_user_data),
     ):
         """Store the team configuration data in the database
 
         Args:
             match_id (UUID): To identify the match
             expected_match_team_name (MatchNameModel):  The team name used in this match.
-                                                        If you choose team0 to select the first attacker and your opponent has not yet set up team0, you can continue to use team0, and if your opponent uses team0, you become team1. 
+                                                        If you choose team0 to select the first attacker and your opponent has not yet set up team0, you can continue to use team0, and if your opponent uses team0, you become team1.
             team_config_data (TeamModel): The team configuration data
             user_data (UserModel): The user data for authentication
         """
@@ -208,7 +267,7 @@ class DCServer:
         match_team_name = await update_data.update_match_data_with_team_name(
             match_id, session, team_config_data.team_name, expected_match_team_name
         )
-        
+
         await create_authentication.create_match_data(
             user_data,
             match_id,
@@ -224,7 +283,7 @@ class DCServer:
         if team_config_data.use_default_config:
             logging.info("Using default config")
             return match_team_name
-        
+
         team_id: UUID | None = await read_data.read_team_id(
             team_config_data.team_name, session
         )
@@ -242,7 +301,9 @@ class DCServer:
                     player_id=player_id,
                     team_id=team_id,
                     max_velocity=getattr(team_config_data, f"player{i}").max_velocity,
-                    shot_dispersion_rate=getattr(team_config_data, f"player{i}").shot_dispersion_rate,
+                    shot_dispersion_rate=getattr(
+                        team_config_data, f"player{i}"
+                    ).shot_dispersion_rate,
                     player_name=player_name,
                 )
                 await create_data.create_player_data(player_data, session)
@@ -254,57 +315,59 @@ class DCServer:
             await update_data.update_first_team(
                 match_id, session, player_id_list, team_config_data.team_name
             )
-            await update_data.update_next_shot_team(
-                match_id, session, team_id
-            )
+            await update_data.update_next_shot_team(match_id, session, team_id)
         elif match_team_name == "team1":
             await update_data.update_second_team(
                 match_id, session, player_id_list, team_config_data.team_name
             )
-            
+
         return match_team_name
 
     @staticmethod
     @match_router.get("/stream/{match_id}")
-    async def stream_state_info(match_id: UUID, user_data: UserModel = Depends(basic_auth.check_user_data)):
-        
+    async def stream_state_info(
+        match_id: UUID, user_data: UserModel = Depends(basic_auth.check_user_data)
+    ):
         channel = f"match:{match_id}"
         redis_subscriber = RedisSubscriber(Session, match_id)
 
         return StreamingResponse(
             redis_subscriber.event_generator(channel, redis),
             media_type="text/event-stream; charset=utf-8",
-            headers={"Cache-Control": "no-cache",
-                     "Connection": "keep-alive"}
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
         )
-
-
 
     @staticmethod
     @match_router.post("/shot-info")
-    async def receive_shot_info(match_id: UUID, shot_info: ShotInfoModel, user_data: UserModel = Depends(basic_auth.check_user_data)) -> None:
+    async def receive_shot_info(
+        match_id: UUID,
+        shot_info: ShotInfoModel,
+        user_data: UserModel = Depends(basic_auth.check_user_data),
+    ) -> None:
         """Receive the shot information from the client
 
         Args:
             match_id (UUID): match_id
             shot_info (ShotInfoModel): shot information from the client
+
         """
         end_time: datetime = datetime.now()
-
         # Get match data to know simulator and team_id
         match_data: MatchDataSchema = await read_data.read_match_data(match_id, session)
-
         # Get latest state data to know total shot number, stone coordinate and remaining time and so on.
         pre_state_data: StateSchema = await read_data.read_latest_state_data(
             match_id, session
         )
-
         # Get match team name to know which team is sending the shot information
         match_team_name: str = await read_authentication.read_match_data(
             user_data, match_id
         )
 
-        shot_team_name: str = "team0" if pre_state_data.next_shot_team == match_data.first_team_id else "team1"
+        shot_team_name: str = (
+            "team0"
+            if pre_state_data.next_shot_team_id == match_data.first_team_id
+            else "team1"
+        )
 
         # Check if shot info which client sent is valid or not
         if shot_team_name != match_team_name:
@@ -312,9 +375,9 @@ class DCServer:
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Not your turn.",
             )
-        
-        winmer_team: UUID = None
 
+        winmer_team: UUID = None
+        player_id: UUID = None
         # stone coordinate before receiving "shot_info"
         pre_stone_coordinate_data: StoneCoordinateSchema = (
             pre_state_data.stone_coordinate
@@ -322,18 +385,17 @@ class DCServer:
         # two client scores before receiving "shot_info"
         pre_score_data: ScoreSchema = pre_state_data.score
         # shot team which send this "shot_info"
-        shot_team: UUID = pre_state_data.next_shot_team
-
+        shot_team_id: UUID = pre_state_data.next_shot_team_id
         # total shot number at this time
         total_shot_number: int = pre_state_data.total_shot_number + 1
+        shot_per_team: int = total_shot_number // 2 + 1
         player_number: int = int(total_shot_number / 4) + 1
+        team_number: int = 0 if match_team_name == "team0" else 1
 
         if match_team_name == "team0":
             player_id = getattr(match_data, f"first_team_player{player_number}_id")
-            team_id = match_data.first_team_id
         elif match_team_name == "team1":
             player_id = getattr(match_data, f"second_team_plyaer{player_number}_id")
-            team_id = match_data.second_team_id
 
         player_data = await read_data.read_player_data(player_id, session)
         dist_translation_velocity = np.max(
@@ -348,10 +410,17 @@ class DCServer:
         time_diff: timedelta = end_time - pre_end_time
         time_diff_seconds: float = time_diff.total_seconds()
 
+        simulated_stones_coordinate, rule_flag, trajectory = simulate_fcv1(
+            shot_info, pre_state_data, total_shot_number, shot_per_team, team_number
+        )
+        logging.info(f"Simulated stones coordinate: {simulated_stones_coordinate}")
+
         channel = f"match:{match_id}"
         await redis.publish(channel, str(match_id))
 
-    async def state_end_number_update(self, state_data: StateSchema) -> StateSchema:
+    async def state_end_number_update(
+        self, state_data: StateSchema, next_shot_team_id: UUID
+    ) -> StateSchema:
         """
 
         Args:
@@ -377,47 +446,11 @@ class DCServer:
             stone_coordinate_id=stone_coordinate.stone_coordinate_id,
             score_id=state_data.score_id,
             shot_id=uuid7(),
-            next_shot_team_id=self.next_shot_team_id,
+            next_shot_team_id=next_shot_team_id,
             created_at=datetime.now(),
             stone_coordinate=stone_coordinate,
         )
         await create_data.create_state_data(state, session)
-
-    def convert_stateschema_to_statemodel(self, state_data: StateSchema, used_time: float) -> StateModel:
-        """Convert the StateSchema to the StateModel to send client
-
-        Args:
-            state_data (StateSchema): The latest state data of the match
-            used_time (float): The time which you spend to think strategy
-
-        Returns:
-            StateModel: The latest state data of the match and is a type for transmission to the client
-        """        
-        winner_team_name = None
-        state_model = StateModel(
-            winner_team = winner_team_name,
-            end_number = state_data.end_number,
-            shot_number = state_data.shot_number,
-            total_shot_number = state_data.total_shot_number,
-            next_shot_team = next_shot_team,
-            first_team_remaining_time = state_data.first_team_extra_end_remaining_time,
-            second_team_remaining_time = state_data.second_team_extra_end_remaining_time,
-            first_team_extra_remaining_time = state_data.first_team_extra_end_remaining_time,
-            second_team_extra_remaining_time = state_data.second_team_extra_end_remaining_time,
-            stone_coordinate = StoneCoordinateModel(
-                stone_coordinate_id = state_data.stone_coordinate_id,
-                stone_coordinate_data = {
-                    team: [CoordinateDataModel(**coord) for coord in coords]
-                    for team, coords in state_data.stone_coordinate.stone_coordinate_data.iten()
-                }
-            ),
-            score = ScoreModel(
-                first_team_score = state_data.score.first_team_score,
-                second_team_score = state_data.score.second_team_score,
-            )
-        )
-        return state_model
-        
 
     def reset_stone_coordinate(self) -> StoneCoordinateSchema:
         """Reset the stone coordinate data
@@ -455,52 +488,3 @@ class DCServer:
             stone_coordinate_data=json.dumps(stone_coordinates_data),
         )
         return stone_coordinate
-
-    def simulate_fcv1(
-        self,
-        shot_info: ShotInfoModel,
-        state_data: StateSchema,
-        total_shot_number: int,
-        shot_per_team: int,
-        team_number: int,
-    ) -> tuple[np.ndarray, bool, np.ndarray]:
-        """Stone simulation with fcv1 model
-
-        Args:
-            shot_info (ShotInfoModel): Adjusted shot information
-            state_data (StateSchema): The latest state data of the match
-            total_shot_number (int): Total number of shots
-            shot_per_team (int): Number of shots per team
-            team_number (int): Team"0" or Team"1"
-
-        Returns:
-            tuple[np.ndarray, bool, np.ndarray]: Simulated stone coordinate, five_lock_rule flag, trajectory
-        """
-        angle_radian = np.deg2rad(shot_info.shot_angle)
-        velocity_x = shot_info.translation_velocity * np.cos(angle_radian)
-        velocity_y = shot_info.translation_velocity * np.sin(angle_radian)
-        angular_velocity_sign = shot_info.angular_velocity_sign
-        stone_position = np.array(
-            [
-                coordinate
-                for team, stones in state_data.stone_coordinate.stone_coordinate_data.items()
-                for stone in stones
-                for coordinate in (stone["x"], stone["y"])
-            ]
-        )
-        angular_velocity_sign = 1
-        if shot_info.angular_velocity_sign == "cw":
-            angular_velocity_sign = 1
-        elif shot_info.angular_velocity_sign == "ccw":
-            angular_velocity_sign = -1
-
-        simulated_stones_coordinate, flag, trajectory = self.stone_simulator.simulator(
-            stone_position,
-            total_shot_number,
-            velocity_x,
-            velocity_y,
-            angular_velocity_sign,
-            team_number,
-            shot_per_team,
-        )
-        return simulated_stones_coordinate, flag, trajectory

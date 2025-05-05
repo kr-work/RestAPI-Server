@@ -4,6 +4,7 @@ from sqlalchemy.types import Integer, String, Uuid, Float, DateTime, TEXT
 from uuid import UUID
 from typing import Optional, Dict, List
 
+
 class Base(DeclarativeBase):
     pass
 
@@ -13,7 +14,7 @@ class MatchAuthentication(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String)
     hash_password = Column(String)
-    match_team_name = Column(String)    # The team name "team0" or "team1"
+    match_team_name = Column(String)  # The team name "team0" or "team1"
     match_id = Column(Uuid)
     created_at = Column(DateTime, nullable=False)
     expired_at = Column(DateTime, nullable=False)

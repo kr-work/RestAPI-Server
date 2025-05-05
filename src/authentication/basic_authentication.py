@@ -33,7 +33,9 @@ class BasicAuthentication:
     def __init__(self):
         pass
 
-    async def check_user_data(self, credentials: HTTPBasicCredentials = Depends(security)) -> UserModel:
+    async def check_user_data(
+        self, credentials: HTTPBasicCredentials = Depends(security)
+    ) -> UserModel:
         """Check if the user data is valid. This function is called only once before the start of the match
 
         Args:
@@ -45,27 +47,29 @@ class BasicAuthentication:
 
         Returns:
             bool: Basic authentication result
-        """        
+        """
         # await create_auth.create_user_data("user", "password")
 
         user_data: UserModel = await read_auth.read_user_data(credentials.username)
         if user_data is None:
             raise HTTPException(
-                status_code = status.HTTP_401_UNAUTHORIZED,
-                detail = "Invalid username",
-                headers = {"WWW-Authenticate": "Basic"},
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid username",
+                headers={"WWW-Authenticate": "Basic"},
             )
 
-        hashed_password = hashlib.sha256((credentials.password + user_data.salt + pepper_data).encode()).hexdigest()
+        hashed_password = hashlib.sha256(
+            (credentials.password + user_data.salt + pepper_data).encode()
+        ).hexdigest()
 
         if not secrets.compare_digest(hashed_password, user_data.hash_password):
             raise HTTPException(
-                status_code = status.HTTP_401_UNAUTHORIZED,
-                detail = "Invalid password",
-                headers = {"WWW-Authenticate": "Basic"},
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid password",
+                headers={"WWW-Authenticate": "Basic"},
             )
         return user_data
-    
+
     async def check_match_data(self, user_data: UserModel, match_id: UUID) -> str:
         """Check if the match data is valid. This function is called only once before the start of the match
 
@@ -79,16 +83,17 @@ class BasicAuthentication:
 
         Returns:
             bool: Basic authentication result
-        """        
-        match_data = await read_auth.read_match_data(user_data, match_id)
-        if match_data is None:
+        """
+        match_team_name: str = await read_auth.read_match_data(user_data, match_id)
+        if match_team_name is None:
             raise HTTPException(
-                status_code = status.HTTP_401_UNAUTHORIZED,
-                detail = "Invalid match data",
-                headers = {"WWW-Authenticate": "Basic"},
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid match data",
+                headers={"WWW-Authenticate": "Basic"},
             )
-        return match_data.match_team_name
-    # 
+        return match_team_name
+
+    #
     async def store_user_data(self, user_name: str, password: str) -> None:
         await create_auth.create_user_data(user_name, password)
 
@@ -103,6 +108,6 @@ async def main(user_name: str, password: str):
     user_data = await basic_auth.read_user_data()
     print(user_data.username, user_data.hash_password, user_data.salt)
 
-    
+
 if __name__ == "__main__":
     asyncio.run(main("user", "password"))

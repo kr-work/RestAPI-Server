@@ -5,8 +5,8 @@ from typing import Optional, Dict, List
 
 
 class MatchNameModel(str, Enum):
-    team0 = "team0"         # team0 is first attacker team at the first end
-    team1 = "team1"         # team1 is sencond attacker team at the first end
+    team0 = "team0"  # team0 is first attacker team at the first end
+    team1 = "team1"  # team1 is sencond attacker team at the first end
 
 
 class TournamentModel(BaseModel):

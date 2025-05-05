@@ -35,9 +35,10 @@ from uuid import UUID
 
 
 class UpdateData:
-
     @staticmethod
-    async def update_match_data_with_team_name(match_id, session: AsyncSession, team_name: str, match_team_name: str) -> str | None:
+    async def update_match_data_with_team_name(
+        match_id, session: AsyncSession, team_name: str, match_team_name: str
+    ) -> str | None:
         async with session:
             try:
                 stmt = select(Match).where(Match.match_id == match_id).with_for_update()
@@ -46,9 +47,9 @@ class UpdateData:
 
                 if result is None:
                     return None
-                
+
                 your_match_team_name = None
-                
+
                 if result.first_team_name is None and result.second_team_name is None:
                     if match_team_name == "team0":
                         result.first_team_name = team_name
@@ -56,10 +57,16 @@ class UpdateData:
                     elif match_team_name == "team1":
                         result.second_team_name = team_name
                         your_match_team_name = "team1"
-                elif result.first_team_name is None and result.second_team_name is not None:
+                elif (
+                    result.first_team_name is None
+                    and result.second_team_name is not None
+                ):
                     result.first_team_name = team_name
                     your_match_team_name = "team0"
-                elif result.first_team_name is not None and result.second_team_name is None:
+                elif (
+                    result.first_team_name is not None
+                    and result.second_team_name is None
+                ):
                     result.second_team_name = team_name
                     your_match_team_name = "team1"
                 else:
@@ -71,10 +78,13 @@ class UpdateData:
                 logging.error(f"Failed to update match data with team name: {e}")
                 return None
 
-            
-
     @staticmethod
-    async def update_first_team(match_id: UUID, session: AsyncSession, player_id_list: List[UUID], team_name: str):
+    async def update_first_team(
+        match_id: UUID,
+        session: AsyncSession,
+        player_id_list: List[UUID],
+        team_name: str,
+    ):
         """Update match table with first team data
 
         Args:
@@ -100,7 +110,12 @@ class UpdateData:
                 logging.error(f"Failed to update first team data: {e}")
 
     @staticmethod
-    async def update_second_team(match_id: UUID, session: AsyncSession, player_id_list: List[UUID], team_name: str):
+    async def update_second_team(
+        match_id: UUID,
+        session: AsyncSession,
+        player_id_list: List[UUID],
+        team_name: str,
+    ):
         """Update match table with second team data
 
         Args:
@@ -126,7 +141,9 @@ class UpdateData:
                 logging.error(f"Failed to update second team data: {e}")
 
     @staticmethod
-    async def update_winner_and_next_shot_team(state_id: UUID, session: AsyncSession, winner_team_id: UUID):
+    async def update_winner_and_next_shot_team(
+        state_id: UUID, session: AsyncSession, winner_team_id: UUID
+    ):
         """Update state table with winner team and next shot team
 
         Args:
@@ -149,7 +166,9 @@ class UpdateData:
                 logging.error(f"Failed to update winner team data: {e}")
 
     @staticmethod
-    async def update_next_shot_team(match_id: UUID, session: AsyncSession, next_shot_team: UUID):
+    async def update_next_shot_team(
+        match_id: UUID, session: AsyncSession, next_shot_team: UUID
+    ):
         """
 
         Args:
@@ -284,7 +303,9 @@ class ReadData:
                 logging.error(f"Failed to read state data: {e}")
 
     @staticmethod
-    async def read_latest_state_data(match_id: UUID, session: AsyncSession) -> StateSchema:
+    async def read_latest_state_data(
+        match_id: UUID, session: AsyncSession
+    ) -> StateSchema:
         """Read the latest state data and stone coordinate data from database
 
         Args:
@@ -325,7 +346,9 @@ class ReadData:
                 logging.error(f"Failed to read latest state data: {e}")
 
     @staticmethod
-    async def read_stone_data(stone_coordinate_id: UUID, session: AsyncSession) -> StoneCoordinateSchema:
+    async def read_stone_data(
+        stone_coordinate_id: UUID, session: AsyncSession
+    ) -> StoneCoordinateSchema:
         """Read stone coordinate data from database
 
         Args:
@@ -405,7 +428,7 @@ class ReadData:
                 result = result.scalars().all()
                 if result is None:
                     return None
-                
+
                 if result[0].first_team_name == team_name:
                     return result[0].first_team_id
                 elif result[0].second_team_name == team_name:
@@ -415,9 +438,11 @@ class ReadData:
             except Exception as e:
                 logging.error(f"Failed to read team player data: {e}")
                 return None
-            
+
     @staticmethod
-    async def read_player_id(player_name: str, team_id: UUID, session: AsyncSession) -> UUID | None:
+    async def read_player_id(
+        player_name: str, team_id: UUID, session: AsyncSession
+    ) -> UUID | None:
         """Read player id data from database
 
         Args:
@@ -429,12 +454,8 @@ class ReadData:
         """
         async with session:
             try:
-                stmt = (
-                    select(Player)
-                    .where(
-                        (Player.player_name == player_name)
-                        & (Player.team_id == team_id)
-                    )
+                stmt = select(Player).where(
+                    (Player.player_name == player_name) & (Player.team_id == team_id)
                 )
                 result = await session.execute(stmt)
                 result = result.scalars().first()
@@ -471,7 +492,6 @@ class ReadData:
 
             except Exception as e:
                 logging.error(f"Failed to read player data: {e}")
-
 
     @staticmethod
     async def read_simulator_name(match_id, session: AsyncSession) -> str:
@@ -658,7 +678,9 @@ class CreateData:
                 logging.error(f"Failed to create shot info data: {e}")
 
     @staticmethod
-    async def create_tournament_data(tournament: TournamentSchema, session: AsyncSession):
+    async def create_tournament_data(
+        tournament: TournamentSchema, session: AsyncSession
+    ):
         """Create tournament data
 
         Args:
@@ -676,7 +698,9 @@ class CreateData:
                 logging.error(f"Failed to create tournament data: {e}")
 
     @staticmethod
-    async def create_physical_simulator_data(simulator: PhysicalSimulatorSchema, session: AsyncSession):
+    async def create_physical_simulator_data(
+        simulator: PhysicalSimulatorSchema, session: AsyncSession
+    ):
         """Create physical simulator data
 
         Args:

@@ -9,21 +9,18 @@ from typing import Tuple
 from uuid import UUID
 
 from src.models.basic_authentication_shemas import MatchAuthentication, UserTable, Base
-from src.models.basic_authentication_models import MatchAuthenticationModel, UserModel 
+from src.models.basic_authentication_models import MatchAuthenticationModel, UserModel
 from src.models.dc_models import MatchNameModel
 from src.create_sqlite_engine import engine
 from src.load_secrets import pepper_data
 
-Session = async_sessionmaker(
-    autocommit=False, class_=AsyncSession, bind=engine
-)
+Session = async_sessionmaker(autocommit=False, class_=AsyncSession, bind=engine)
 session = Session()
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("aiosqlite").setLevel(logging.WARNING)
 
 
 class CreateAuthentication:
-
     @staticmethod
     async def create_table() -> None:
         """Create table if not exists"""
@@ -47,9 +44,7 @@ class CreateAuthentication:
         async with session:
             try:
                 new_user = UserTable(
-                    username=username,
-                    hash_password=password,
-                    salt=salt
+                    username=username, hash_password=password, salt=salt
                 )
                 session.add(new_user)
                 await session.commit()
@@ -58,8 +53,9 @@ class CreateAuthentication:
                 logging.error(f"Error creating user data: {e}")
 
     @staticmethod
-    async def create_match_data(user_data: UserModel, match_id: UUID, match_team_name: str) -> None:
-
+    async def create_match_data(
+        user_data: UserModel, match_id: UUID, match_team_name: str
+    ) -> None:
         async with session:
             try:
                 match_auth = MatchAuthentication(
@@ -68,7 +64,7 @@ class CreateAuthentication:
                     match_team_name=match_team_name,
                     match_id=match_id,
                     created_at=datetime.now(),
-                    expired_at=datetime.now() + timedelta(days=14)
+                    expired_at=datetime.now() + timedelta(days=14),
                 )
                 session.add(match_auth)
                 await session.commit()
@@ -90,9 +86,7 @@ class ReadAuthentication:
         """
         async with session:
             try:
-                stmt = (select(UserTable)
-                        .where(UserTable.username == username)
-                )
+                stmt = select(UserTable).where(UserTable.username == username)
                 result = await session.execute(stmt)
                 result = result.scalars().first()
                 if result is None:
@@ -101,14 +95,14 @@ class ReadAuthentication:
                 user = UserModel(
                     username=result.username,
                     hash_password=result.hash_password,
-                    salt=result.salt
+                    salt=result.salt,
                 )
                 return user
 
             except Exception as e:
                 logging.error(f"Error reading user data: {e}")
                 return None
-            
+
     @staticmethod
     async def read_match_data(user_data: UserModel, match_id: UUID) -> str:
         """Read match data to get match team name("team0" or "team1")
@@ -122,9 +116,9 @@ class ReadAuthentication:
         """
         async with session:
             try:
-                stmt = (select(MatchAuthentication)
-                        .where(MatchAuthentication.username == user_data.username,
-                               MatchAuthentication.match_id == match_id)
+                stmt = select(MatchAuthentication).where(
+                    MatchAuthentication.username == user_data.username,
+                    MatchAuthentication.match_id == match_id,
                 )
                 result = await session.execute(stmt)
                 result = result.scalars().first()
@@ -132,8 +126,7 @@ class ReadAuthentication:
                     logging.error("Match data not found")
                     return None
                 match = MatchAuthenticationModel(
-                    match_team_name=result.match_team_name,
-                    match_id=result.match_id
+                    match_team_name=result.match_team_name, match_id=result.match_id
                 )
                 return match.match_team_name
 
@@ -153,9 +146,9 @@ class DeleteAuthentication:
         """
         async with session:
             try:
-                stmt = (select(MatchAuthentication)
-                        .where(MatchAuthentication.username == username,
-                               MatchAuthentication.match_id == match_id)
+                stmt = select(MatchAuthentication).where(
+                    MatchAuthentication.username == username,
+                    MatchAuthentication.match_id == match_id,
                 )
                 result = await session.execute(stmt)
                 result = result.scalars().first()
@@ -173,8 +166,8 @@ class DeleteAuthentication:
         """Delete expired match data"""
         async with session:
             try:
-                stmt = (select(MatchAuthentication)
-                        .where(MatchAuthentication.expired_at < datetime.now())
+                stmt = select(MatchAuthentication).where(
+                    MatchAuthentication.expired_at < datetime.now()
                 )
                 result = await session.execute(stmt)
                 result = result.scalars().all()
