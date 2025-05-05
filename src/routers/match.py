@@ -11,7 +11,6 @@ from fastapi.security import HTTPBasic
 from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
 from redis.asyncio import Redis
 
-from src.load_secrets import redis_user, redis_password
 from src.crud import CreateData, ReadData, UpdateData
 from src.models.dc_models import (
     ClientDataModel,
@@ -44,7 +43,7 @@ from src.authentication.basic_authentication import BasicAuthentication
 from src.authentication.basic_authentication_crud import CreateAuthentication, ReadAuthentication, DeleteAuthentication
 from src.simulator import StoneSimulator
 
-redis = Redis(host="redis", port=6379, decode_responses=True)
+redis = Redis(host="redis", port=6379, decode_responses=True, health_check_interval=30)
 
 match_router = APIRouter()
 logging.basicConfig(level=logging.INFO)

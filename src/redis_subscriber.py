@@ -55,12 +55,10 @@ class RedisSubscriber:
                     )
                     yield sse_message
 
-                await asyncio.sleep(HEART_BEAT)
-                yield "event: heartbeat\n\n"
-
         finally:
+            logging.info("Unsubscribing from channel")
             if pubsub:
-                await pubsub.unsubscribe(self.channel)
+                await pubsub.unsubscribe(channel)
                 await pubsub.close()
 
             await self.session.close()
