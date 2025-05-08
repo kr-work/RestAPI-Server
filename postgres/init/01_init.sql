@@ -9,8 +9,8 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- Score
 CREATE TABLE IF NOT EXISTS score (
     score_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    first_team_score INTEGER[],
-    second_team_score INTEGER[]
+    team0_score INTEGER[],
+    team1_score INTEGER[]
 );
 
 -- PhysicalSimulator

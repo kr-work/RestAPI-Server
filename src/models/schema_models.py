@@ -46,8 +46,8 @@ class StoneCoordinateSchema(BaseModel):
 
 class ScoreSchema(BaseModel):
     score_id: UUID
-    first_team_score: list
-    second_team_score: list
+    team0_score: list
+    team1_score: list
 
     class Config:
         from_attributes = True

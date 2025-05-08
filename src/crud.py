@@ -210,8 +210,8 @@ class UpdateData:
                 if result is None:
                     return False
 
-                result.first_team_score = score.first_team_score
-                result.second_team_score = score.second_team_score
+                result.team0_score = score.team0_score
+                result.team1_score = score.team1_score
                 await session.commit()
             except Exception as e:
                 logging.error(f"Failed to update score data: {e}")
@@ -398,8 +398,8 @@ class ReadData:
 
                 score_data = ScoreSchema(
                     score_id=result.score_id,
-                    first_team_score=result.first_team_score,
-                    second_team_score=result.second_team_score,
+                    team0_score=result.team0_score,
+                    team1_score=result.team1_score,
                 )
                 return score_data
             except Exception as e:
@@ -537,8 +537,8 @@ class CreateData:
             try:
                 new_score = Score(
                     score_id=match.score.score_id,
-                    first_team_score=match.score.first_team_score,
-                    second_team_score=match.score.second_team_score,
+                    team0_score=match.score.team0_score,
+                    team1_score=match.score.team1_score,
                 )
                 new_simulator = PhysicalSimulator(
                     physical_simulator_id=match.simulator.physical_simulator_id,
@@ -644,8 +644,8 @@ class CreateData:
             try:
                 new_score = Score(
                     score_id=score.score_id,
-                    first_team_score=score.first_team_score,
-                    second_team_score=score.second_team_score,
+                    team0_score=score.first_team_score,
+                    team1_score=score.second_team_score,
                 )
                 session.add(new_score)
                 await session.commit()

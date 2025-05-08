@@ -197,7 +197,7 @@ class BaseServer:
         )
         # Create score data
         score = ScoreSchema(
-            score_id=score_id, first_team_score=team_score, second_team_score=team_score
+            score_id=score_id, team0_score=team_score, team1_score=team_score
         )
         # Create simulator data
         simulator = PhysicalSimulatorSchema(
@@ -406,17 +406,20 @@ class DCServer:
             ]
         )
 
+        dist_shot_info: ShotInfoModel = shot_info
+        dist_shot_info.translation_velocity = dist_translation_velocity
+
         pre_end_time: datetime = pre_state_data.created_at
         time_diff: timedelta = end_time - pre_end_time
         time_diff_seconds: float = time_diff.total_seconds()
 
         simulated_stones_coordinate, rule_flag, trajectory = simulate_fcv1(
-            shot_info, pre_state_data, total_shot_number, shot_per_team, team_number
+            dist_shot_info, pre_state_data, total_shot_number, shot_per_team, team_number
         )
         logging.info(f"Simulated stones coordinate: {simulated_stones_coordinate}")
 
         channel = f"match:{match_id}"
-        await redis.publish(channel, str(match_id))
+        # await redis.publish(channel, str(match_id))
 
     async def state_end_number_update(
         self, state_data: StateSchema, next_shot_team_id: UUID

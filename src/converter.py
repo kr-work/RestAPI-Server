@@ -42,17 +42,17 @@ class DataConverter:
         if state_data.winner_team_id is not None:
             winner_team_id = state_data.winner_team_id
             winner_team_name = (
-                match_data.first_team_name
+                "team0"
                 if winner_team_id == match_data.first_team_id
-                else match_data.second_team_name
+                else "team1"
             )
 
         if state_data.next_shot_team_id is not None:
             next_shot_team_id = state_data.next_shot_team_id
             next_shot_team = (
-                match_data.first_team_name
+                "team0"
                 if next_shot_team_id == match_data.first_team_id
-                else match_data.second_team_name
+                else "team1"
             )
         
         state_model = StateModel(
@@ -74,8 +74,8 @@ class DataConverter:
                 }
             ),
             score = ScoreModel(
-                first_team_score = state_data.score.first_team_score,
-                second_team_score = state_data.score.second_team_score,
+                team0_score = state_data.score.team0_score,
+                team1_score = state_data.score.team1_score,
             )
         )
         return state_model

@@ -13,7 +13,6 @@ services:
       - --protected-mode
       - "no"
 
-
   app:
     build:
       context: .

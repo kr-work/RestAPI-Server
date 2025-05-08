@@ -115,8 +115,8 @@ class Match(Base):
 class Score(Base):
     __tablename__ = "score"
     score_id = Column(Uuid, primary_key=True, default=uuid7)
-    first_team_score = Column(ARRAY(Integer))
-    second_team_score = Column(ARRAY(Integer))
+    team0_score = Column(ARRAY(Integer))
+    team1_score = Column(ARRAY(Integer))
 
     match = relationship(
         "Match",
