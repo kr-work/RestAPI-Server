@@ -52,7 +52,7 @@ class ScoreModel(BaseModel):
 
 class ShotInfoModel(BaseModel):
     translation_velocity: float
-    angular_velocity_sign: str
+    angular_velocity_sign: int
     angular_velocity: float
     shot_angle: float
 

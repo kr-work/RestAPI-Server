@@ -388,7 +388,7 @@ class DCServer:
         shot_team_id: UUID = pre_state_data.next_shot_team_id
         # total shot number at this time
         total_shot_number: int = pre_state_data.total_shot_number + 1
-        shot_per_team: int = total_shot_number // 2 + 1
+        shot_per_team: int = total_shot_number // 2
         player_number: int = int(total_shot_number / 4) + 1
         team_number: int = 0 if match_team_name == "team0" else 1
 

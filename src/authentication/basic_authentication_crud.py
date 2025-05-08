@@ -9,7 +9,7 @@ from typing import Tuple
 from uuid import UUID
 
 from src.models.basic_authentication_shemas import MatchAuthentication, UserTable, Base
-from src.models.basic_authentication_models import MatchAuthenticationModel, UserModel
+from src.models.basic_authentication_models import UserModel
 from src.models.dc_models import MatchNameModel
 from src.create_sqlite_engine import engine
 from src.load_secrets import pepper_data
@@ -125,10 +125,8 @@ class ReadAuthentication:
                 if result is None:
                     logging.error("Match data not found")
                     return None
-                match = MatchAuthenticationModel(
-                    match_team_name=result.match_team_name, match_id=result.match_id
-                )
-                return match.match_team_name
+                match_team_name = result.match_team_name
+                return match_team_name
 
             except Exception as e:
                 logging.error(f"Error reading match data: {e}")
