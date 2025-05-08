@@ -515,15 +515,6 @@ class ReadData:
 
 
 class CreateData:
-    # @staticmethod
-    # async def create_table() -> None:
-    #     """Create table if not exists"""
-    #     try:
-    #         async with engine.begin() as conn:
-    #             # テーブル作成 (既存テーブルがある場合はスキップされる)
-    #             await conn.run_sync(Base.metadata.create_all)
-    #     except IntegrityError as e:
-    #         logging.warning(f"Table already exists or other integrity error: {e}")
 
     @staticmethod
     async def create_match_data(match: MatchDataSchema, session: AsyncSession):
@@ -644,8 +635,8 @@ class CreateData:
             try:
                 new_score = Score(
                     score_id=score.score_id,
-                    team0_score=score.first_team_score,
-                    team1_score=score.second_team_score,
+                    team0_score=score.team0_score,
+                    team1_score=score.team1_score,
                 )
                 session.add(new_score)
                 await session.commit()
@@ -668,9 +659,11 @@ class CreateData:
                     trajectory_id=shot_info.trajectory_id,
                     pre_shot_state_id=shot_info.pre_shot_state_id,
                     post_shot_state_id=shot_info.post_shot_state_id,
-                    velocity_x=shot_info.velocity_x,
-                    velocity_y=shot_info.velocity_y,
+                    actual_translation_velocity=shot_info.actual_translation_velocity,
+                    translation_velocity=shot_info.translation_velocity,
                     angular_velocity_sign=shot_info.angular_velocity_sign,
+                    angular_velocity=shot_info.angular_velocity,
+                    shot_angle=shot_info.shot_angle,
                 )
                 session.add(new_shot_info)
                 await session.commit()

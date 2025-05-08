@@ -416,7 +416,51 @@ class DCServer:
         simulated_stones_coordinate, rule_flag, trajectory = simulate_fcv1(
             dist_shot_info, pre_state_data, total_shot_number, shot_per_team, team_number
         )
-        logging.info(f"Simulated stones coordinate: {simulated_stones_coordinate}")
+
+        shot_info_data = ShotInfoSchema(
+            shot_id=uuid7(),
+            player_id=player_id,
+            team_id=shot_team_id,
+            trajectory_id=uuid7(),
+            pre_shot_state_id=pre_state_data.state_id,
+            post_shot_state_id=uuid7(),
+            actual_translation_velocity=shot_info.translation_velocity,
+            translation_velocity=dist_translation_velocity,
+            angular_velocity_sign=shot_info.angular_velocity_sign,
+            angular_velocity=shot_info.angular_velocity,
+            shot_angle=shot_info.shot_angle,
+        )
+
+        stone_coordinate = {
+            "team0": [
+                {
+                    "x": simulated_stones_coordinate[0][i][0],
+                    "y": simulated_stones_coordinate[0][i][1],
+                }
+                for i in range(8)
+            ],
+            "team1": [
+                {
+                    "x": simulated_stones_coordinate[1][i][0],
+                    "y": simulated_stones_coordinate[1][i][1],
+                }
+                for i in range(8)
+            ],
+        }
+        stone_coordinate_data = StoneCoordinateSchema(
+            stone_coordinate_id=uuid7(),
+            stone_coordinate_data=json.dumps(stone_coordinate),
+        )
+
+        state_data = StateSchema(
+            state_id=shot_info_data.post_shot_state_id,
+            winner_team_id=winmer_team,
+            match_id=match_id,
+            end_number=pre_state_data.end_number,
+            shot_number=shot_per_team,
+            total_shot_number=total_shot_number,
+            # 思考時間を計算してから追加
+        )
 
         channel = f"match:{match_id}"
         # await redis.publish(channel, str(match_id))
@@ -424,7 +468,7 @@ class DCServer:
     async def state_end_number_update(
         self, state_data: StateSchema, next_shot_team_id: UUID
     ) -> StateSchema:
-        """
+        """Update the state data when the end number is updated
 
         Args:
             state_data (StateSchema): _description_
