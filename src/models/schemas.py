@@ -179,12 +179,6 @@ class ShotInfo(Base):
         back_populates="shot_info",
         cascade="all, delete"
     )
-    trajectory = relationship(
-        "Trajectory",
-        primaryjoin="foreign(ShotInfo.trajectory_id) == Trajectory.trajectory_id",
-        back_populates="shot_info",
-        cascade="all, delete"
-    )
     pre_shot_state = relationship(
         "State",
         primaryjoin="foreign(ShotInfo.pre_shot_state_id) == State.state_id",
@@ -273,13 +267,6 @@ class Trajectory(Base):
     trajectory_id = Column(Uuid, primary_key=True, default=uuid7)
     trajectory_data = Column(JSONB)
     data_format_version = Column(TEXT)
-
-    shot_info = relationship(
-        "ShotInfo",
-        primaryjoin="Trajectory.trajectory_id == foreign(ShotInfo.trajectory_id)",
-        back_populates="trajectory",
-        cascade="all, delete"
-    )
 
 
 class Player(Base):

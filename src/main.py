@@ -3,17 +3,17 @@ import logging
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 
-from src.authentication.basic_authentication_crud import DeleteAuthentication
+from src.authentication.basic_authentication import BasicAuthentication
 from src.crud import CreateData
 from src.routers import match
-from src.routers.match import session
+from src.routers.match import Session
 from src.routers import restapi
 from src.models.schema_models import PlayerSchema
 from src.load_secrets import db_name, host, password, port, user
 
 POSTGRES_DATABASE_URL = f"postgresql://{user}:{password}@{host}:{port}/{db_name}"
 
-delete_auth = DeleteAuthentication()
+basic_auth = BasicAuthentication()
 scheduler = AsyncIOScheduler()
 logging.basicConfig(level=logging.DEBUG)
 
@@ -38,12 +38,13 @@ async def lifespan(app):
         shot_dispersion_rate=0.1,
         player_name="second",
     )
-    await cd.create_default_player_data(first_player, session)
-    await cd.create_default_player_data(second_player, session)
+    async with Session() as session:
+        await cd.create_default_player_data(first_player, session)
+        await cd.create_default_player_data(second_player, session)
 
     # If the match data is expired, delete the match data
     scheduler.add_job(
-        delete_auth.delete_expired_match_data,
+        basic_auth.delete_expired_match_data,
         "interval",
         hours=24,
     )

@@ -20,25 +20,26 @@ data_converter = DataConverter()
 class RedisSubscriber:
     def __init__(self, Session: async_sessionmaker, match_id: str):
         self.match_id: str = match_id
-        self.session: AsyncSession = Session()
+        self.Session: async_sessionmaker = Session
 
     async def event_generator(self, channel: str, redis: Redis):
         pubsub = redis.pubsub()
         event_id = 0
 
-        match_data: MatchDataSchema = await read_data.read_match_data(
-            self.match_id, self.session
-        )
-        latest_state_data: StateSchema = await read_data.read_latest_state_data(
-            self.match_id, self.session
-        )
+        async with self.Session() as session:
+            match_data: MatchDataSchema = await read_data.read_match_data(
+                self.match_id, session
+            )
+            latest_state_data: StateSchema = await read_data.read_latest_state_data(
+                self.match_id, session
+            )
         latest_state_data: StateModel = (
             data_converter.convert_stateschema_to_statemodel(
                 match_data, latest_state_data
             )
         )
         payload = json.dumps(latest_state_data.model_dump())
-        logging.info(f"Payload: {payload}")
+        logging.debug(f"Payload: {payload}")
         sse_message = f"event: state_update\nid: {event_id}\ndata: {payload}\n\n"
         yield sse_message
 
@@ -49,11 +50,12 @@ class RedisSubscriber:
                     ignore_subscribe_messages=True, timeout=None
                 )
                 if msg and msg["type"] == "message":
-                    latest_state_data: StateSchema = (
-                        await read_data.read_latest_state_data(
-                            self.match_id, self.session
+                    async with self.Session() as session:
+                        latest_state_data: StateSchema = (
+                            await read_data.read_latest_state_data(
+                                self.match_id, session
+                            )
                         )
-                    )
                     latest_state_data: StateModel = (
                         data_converter.convert_stateschema_to_statemodel(
                             match_data, latest_state_data
@@ -73,5 +75,3 @@ class RedisSubscriber:
             if pubsub:
                 await pubsub.unsubscribe(channel)
                 await pubsub.close()
-
-            await self.session.close()

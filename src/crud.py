@@ -39,44 +39,38 @@ class UpdateData:
     async def update_match_data_with_team_name(
         match_id, session: AsyncSession, team_name: str, match_team_name: str
     ) -> str | None:
-        async with session:
-            try:
-                stmt = select(Match).where(Match.match_id == match_id).with_for_update()
-                result = await session.execute(stmt)
-                result = result.scalars().first()
+        try:
+            stmt = select(Match).where(Match.match_id == match_id).with_for_update()
+            result = await session.execute(stmt)
+            result = result.scalars().first()
 
-                if result is None:
-                    return None
+            if result is None:
+                return None
 
-                your_match_team_name = None
+            your_match_team_name = None
 
-                if result.first_team_name is None and result.second_team_name is None:
-                    if match_team_name == "team0":
-                        result.first_team_name = team_name
-                        your_match_team_name = "team0"
-                    elif match_team_name == "team1":
-                        result.second_team_name = team_name
-                        your_match_team_name = "team1"
-                elif (
-                    result.first_team_name is None
-                    and result.second_team_name is not None
-                ):
+            if result.first_team_name is None and result.second_team_name is None:
+                if match_team_name == "team0":
                     result.first_team_name = team_name
                     your_match_team_name = "team0"
-                elif (
-                    result.first_team_name is not None
-                    and result.second_team_name is None
-                ):
+                elif match_team_name == "team1":
                     result.second_team_name = team_name
                     your_match_team_name = "team1"
-                else:
-                    return None
-                await session.commit()
-                return your_match_team_name
-
-            except Exception as e:
-                logging.error(f"Failed to update match data with team name: {e}")
+            elif result.first_team_name is None and result.second_team_name is not None:
+                result.first_team_name = team_name
+                your_match_team_name = "team0"
+            elif result.first_team_name is not None and result.second_team_name is None:
+                result.second_team_name = team_name
+                your_match_team_name = "team1"
+            else:
                 return None
+            await session.commit()
+            return your_match_team_name
+
+        except Exception as e:
+            await session.rollback()
+            logging.error(f"Failed to update match data with team name: {e}")
+            return None
 
     @staticmethod
     async def update_first_team(
@@ -91,23 +85,23 @@ class UpdateData:
             match_id (UUID): To identify the match
             first_team (TeamSchema): First attack at the first end
         """
-        async with session:
-            try:
-                stmt = select(Match).where(Match.match_id == match_id)
-                result = await session.execute(stmt)
-                result = result.scalars().first()
+        try:
+            stmt = select(Match).where(Match.match_id == match_id)
+            result = await session.execute(stmt)
+            result = result.scalars().first()
 
-                if result is None:
-                    return False
+            if result is None:
+                return False
 
-                result.first_team_name = team_name
-                result.first_team_player1_id = player_id_list[0]
-                result.first_team_player2_id = player_id_list[1]
-                result.first_team_player3_id = player_id_list[2]
-                result.first_team_player4_id = player_id_list[3]
-                await session.commit()
-            except Exception as e:
-                logging.error(f"Failed to update first team data: {e}")
+            result.first_team_name = team_name
+            result.first_team_player1_id = player_id_list[0]
+            result.first_team_player2_id = player_id_list[1]
+            result.first_team_player3_id = player_id_list[2]
+            result.first_team_player4_id = player_id_list[3]
+            await session.commit()
+        except Exception as e:
+            await session.rollback()
+            logging.error(f"Failed to update first team data: {e}")
 
     @staticmethod
     async def update_second_team(
@@ -122,48 +116,48 @@ class UpdateData:
             match_id (UUID): To identify the match
             second_team (TeamSchema): Second attack at the first end
         """
-        async with session:
-            try:
-                stmt = select(Match).where(Match.match_id == match_id)
-                result = await session.execute(stmt)
-                result = result.scalars().first()
+        try:
+            stmt = select(Match).where(Match.match_id == match_id)
+            result = await session.execute(stmt)
+            result = result.scalars().first()
 
-                if result is None:
-                    return False
+            if result is None:
+                return False
 
-                result.second_team_name = team_name
-                result.second_team_player1_id = player_id_list[0]
-                result.second_team_player2_id = player_id_list[1]
-                result.second_team_player3_id = player_id_list[2]
-                result.second_team_player4_id = player_id_list[3]
-                await session.commit()
-            except Exception as e:
-                logging.error(f"Failed to update second team data: {e}")
+            result.second_team_name = team_name
+            result.second_team_player1_id = player_id_list[0]
+            result.second_team_player2_id = player_id_list[1]
+            result.second_team_player3_id = player_id_list[2]
+            result.second_team_player4_id = player_id_list[3]
+            await session.commit()
+        except Exception as e:
+            await session.rollback()
+            logging.error(f"Failed to update second team data: {e}")
 
-    @staticmethod
-    async def update_winner_and_next_shot_team(
-        state_id: UUID, session: AsyncSession, winner_team_id: UUID
-    ):
-        """Update state table with winner team and next shot team
+    # @staticmethod
+    # async def update_winner_and_next_shot_team(
+    #     state_id: UUID, session: AsyncSession, winner_team_id: UUID
+    # ):
+    #     """Update state table with winner team and next shot team
 
-        Args:
-            state_id (UUID): To identify the state
-            winner_team (UUID): Winner team of the game
-        """
-        async with session:
-            try:
-                stmt = select(State).where(State.state_id == state_id)
-                result = await session.execute(stmt)
-                result = result.scalars().first()
+    #     Args:
+    #         state_id (UUID): To identify the state
+    #         winner_team (UUID): Winner team of the game
+    #     """
+    #     try:
+    #         stmt = select(State).where(State.state_id == state_id)
+    #         result = await session.execute(stmt)
+    #         result = result.scalars().first()
 
-                if result is None:
-                    return False
+    #         if result is None:
+    #             return False
 
-                result.winner_team_id = winner_team_id
-                result.next_shot_team = None
-                await session.commit()
-            except Exception as e:
-                logging.error(f"Failed to update winner team data: {e}")
+    #         result.winner_team_id = winner_team_id
+    #         result.next_shot_team_id = None
+    #         await session.commit()
+    #     except Exception as e:
+    #         await session.rollback()
+    #         logging.error(f"Failed to update winner team data: {e}")
 
     @staticmethod
     async def update_next_shot_team(
@@ -175,24 +169,24 @@ class UpdateData:
             match_id (UUID): To identify the latest state
             next_shot_team (UUID): Next shot team id
         """
-        async with session:
-            try:
-                stmt = (
-                    select(State)
-                    .where(State.match_id == match_id)
-                    .order_by(desc(State.created_at))
-                    .limit(1)
-                )
-                result = await session.execute(stmt)
-                result = result.scalars().first()
+        try:
+            stmt = (
+                select(State)
+                .where(State.match_id == match_id)
+                .order_by(desc(State.created_at))
+                .limit(1)
+            )
+            result = await session.execute(stmt)
+            result = result.scalars().first()
 
-                if result is None:
-                    return False
+            if result is None:
+                return False
 
-                result.next_shot_team = next_shot_team
-                await session.commit()
-            except Exception as e:
-                logging.error(f"Failed to update next shot team data: {e}")
+            result.next_shot_team_id = next_shot_team
+            await session.commit()
+        except Exception as e:
+            await session.rollback()
+            logging.error(f"Failed to update next shot team data: {e}")
 
     @staticmethod
     async def update_score(score: ScoreSchema, session: AsyncSession):
@@ -201,25 +195,24 @@ class UpdateData:
         Args:
             score (ScoreSchema): New score data
         """
-        async with session:
-            try:
-                stmt = select(Score).where(Score.score_id == score.score_id)
-                result = await session.execute(stmt)
-                result = result.scalars().first()
+        try:
+            stmt = select(Score).where(Score.score_id == score.score_id)
+            result = await session.execute(stmt)
+            result = result.scalars().first()
 
-                if result is None:
-                    return False
+            if result is None:
+                return False
 
-                result.team0_score = score.team0_score
-                result.team1_score = score.team1_score
-                await session.commit()
-            except Exception as e:
-                logging.error(f"Failed to update score data: {e}")
-
+            result.team0_score = score.team0_score
+            result.team1_score = score.team1_score
+            await session.commit()
+        except Exception as e:
+            await session.rollback()
+            logging.error(f"Failed to update score data: {e}")
 
 class ReadData:
     @staticmethod
-    async def read_match_data(match_id: UUID, session: AsyncSession) -> MatchDataSchema:
+    async def read_match_data(match_id: UUID, session: AsyncSession) -> MatchDataSchema | None:
         """Read match data and score, tournament, simulator data from database
 
         Args:
@@ -228,27 +221,27 @@ class ReadData:
         Returns:
             MatchDataSchema: Match data with score, tournament, simulator data
         """
-        async with session:
-            try:
-                stmt = (
-                    select(Match)
-                    .where(Match.match_id == match_id)
-                    .options(
-                        joinedload(Match.score),
-                        joinedload(Match.tournament),
-                        joinedload(Match.simulator),
-                    )
+        try:
+            stmt = (
+                select(Match)
+                .where(Match.match_id == match_id)
+                .options(
+                    joinedload(Match.score),
+                    joinedload(Match.tournament),
+                    joinedload(Match.simulator),
                 )
-                result = await session.execute(stmt)
-                result = result.scalars().first()
+            )
+            result = await session.execute(stmt)
+            result = result.scalars().first()
 
-                if result is None:
-                    return None
+            if result is None:
+                return None
 
-                match_data = MatchDataSchema.model_validate(result)
-                return match_data
-            except Exception as e:
-                logging.error(f"Failed to read match data: {e}")
+            match_data = MatchDataSchema.model_validate(result)
+            return match_data
+        except Exception as e:
+            logging.error(f"Failed to read match data: {e}")
+            return None
 
     @staticmethod
     async def read_state_data(state_id: UUID, session: AsyncSession) -> StateSchema:
@@ -260,47 +253,46 @@ class ReadData:
         Returns:
             StateSchema: State data with stone coordinate data
         """
-        async with session:
-            try:
-                stmt = (
-                    select(State)
-                    .options(joinedload(State.stone_coordinate))
-                    .where(State.state_id == state_id)
+        try:
+            stmt = (
+                select(State)
+                .options(joinedload(State.stone_coordinate))
+                .where(State.state_id == state_id)
+            )
+            result = await session.execute(stmt)
+            result = result.scalars().first()
+
+            if result is None:
+                return None
+
+            stone_coordinate_data = None
+            if result.stone_coordinate:
+                stone_coordinate_data = StoneCoordinateSchema(
+                    stone_coordinate_id=result.stone_coordinate.stone_coordinate_id,
+                    stone_coordinate_data=json.dumps(
+                        result.stone_coordinate.stone_coordinate_data
+                    ),
                 )
-                result = await session.execute(stmt)
-                result = result.scalars().first()
 
-                if result is None:
-                    return None
-
-                stone_coordinate_data = None
-                if result.stone_coordinate:
-                    stone_coordinate_data = StoneCoordinateSchema(
-                        stone_coordinate_id=result.stone_coordinate.stone_coordinate_id,
-                        stone_coordinate_data=json.dumps(
-                            result.stone_coordinate.stone_coordinate_data
-                        ),
-                    )
-
-                state_data = StateSchema(
-                    state_id=result.state_id,
-                    match_id=result.match_id,
-                    end_number=result.end_number,
-                    shot_number=result.shot_number,
-                    total_shot_number=result.total_shot_number,
-                    first_team_remaining_time=result.first_team_remaining_time,
-                    second_team_remaining_time=result.second_team_remaining_time,
-                    first_team_extra_end_remaining_time=result.first_team_extra_end_remaining_time,
-                    second_team_extra_end_remaining_time=result.second_team_extra_end_remaining_time,
-                    stone_coordinate_id=result.stone_coordinate_id,
-                    shot_id=result.shot_id,
-                    next_shot_team_id=result.next_shot_team_id,
-                    created_at=result.created_at,
-                    stone_coordinate=stone_coordinate_data,
-                )
-                return state_data
-            except Exception as e:
-                logging.error(f"Failed to read state data: {e}")
+            state_data = StateSchema(
+                state_id=result.state_id,
+                match_id=result.match_id,
+                end_number=result.end_number,
+                shot_number=result.shot_number,
+                total_shot_number=result.total_shot_number,
+                first_team_remaining_time=result.first_team_remaining_time,
+                second_team_remaining_time=result.second_team_remaining_time,
+                first_team_extra_end_remaining_time=result.first_team_extra_end_remaining_time,
+                second_team_extra_end_remaining_time=result.second_team_extra_end_remaining_time,
+                stone_coordinate_id=result.stone_coordinate_id,
+                shot_id=result.shot_id,
+                next_shot_team_id=result.next_shot_team_id,
+                created_at=result.created_at,
+                stone_coordinate=stone_coordinate_data,
+            )
+            return state_data
+        except Exception as e:
+            logging.error(f"Failed to read state data: {e}")
 
     @staticmethod
     async def read_latest_state_data(
@@ -314,36 +306,35 @@ class ReadData:
         Returns:
             StateSchema: Latest state data with stone coordinate data
         """
-        async with session:
-            try:
-                stmt = (
-                    select(State)
-                    .options(
-                        joinedload(State.stone_coordinate),
-                        joinedload(State.score),
-                    )
-                    .where(State.match_id == match_id)
-                    .order_by(desc(State.created_at))
-                    .limit(1)
+        try:
+            stmt = (
+                select(State)
+                .options(
+                    joinedload(State.stone_coordinate),
+                    joinedload(State.score),
                 )
-                result = await session.execute(stmt)
-                result = result.scalars().first()
+                .where(State.match_id == match_id)
+                .order_by(desc(State.created_at))
+                .limit(1)
+            )
+            result = await session.execute(stmt)
+            result = result.scalars().first()
 
-                if result is None:
-                    return None
+            if result is None:
+                return None
 
-                if result.stone_coordinate and isinstance(
-                    result.stone_coordinate.stone_coordinate_data, dict
-                ):
-                    result.stone_coordinate.stone_coordinate_data = json.dumps(
-                        result.stone_coordinate.stone_coordinate_data
-                    )
+            if result.stone_coordinate and isinstance(
+                result.stone_coordinate.stone_coordinate_data, dict
+            ):
+                result.stone_coordinate.stone_coordinate_data = json.dumps(
+                    result.stone_coordinate.stone_coordinate_data
+                )
 
-                state_data = StateSchema.model_validate(result)
-                return state_data
+            state_data = StateSchema.model_validate(result)
+            return state_data
 
-            except Exception as e:
-                logging.error(f"Failed to read latest state data: {e}")
+        except Exception as e:
+            logging.error(f"Failed to read latest state data: {e}")
 
     @staticmethod
     async def read_stone_data(
@@ -357,25 +348,24 @@ class ReadData:
         Returns:
             StoneCoordinateSchema: Stone coordinate data
         """
-        async with session:
-            try:
-                stmt = select(StoneCoordinate).where(
-                    StoneCoordinate.stone_coordinate_id == stone_coordinate_id
-                )
-                result = await session.execute(stmt)
-                result = result.scalars().first()
+        try:
+            stmt = select(StoneCoordinate).where(
+                StoneCoordinate.stone_coordinate_id == stone_coordinate_id
+            )
+            result = await session.execute(stmt)
+            result = result.scalars().first()
 
-                if result is None:
-                    return None
+            if result is None:
+                return None
 
-                stone_data = StoneCoordinateSchema(
-                    stone_coordinate_id=result.stone_coordinate_id,
-                    stone_coordinate_data=json.dumps(result.stone_coordinate_data),
-                )
-                return stone_data
+            stone_data = StoneCoordinateSchema(
+                stone_coordinate_id=result.stone_coordinate_id,
+                stone_coordinate_data=json.dumps(result.stone_coordinate_data),
+            )
+            return stone_data
 
-            except Exception as e:
-                logging.error(f"Failed to read stone data: {e}")
+        except Exception as e:
+            logging.error(f"Failed to read stone data: {e}")
 
     @staticmethod
     async def read_score_data(score_id: UUID, session: AsyncSession) -> ScoreSchema:
@@ -387,23 +377,22 @@ class ReadData:
         Returns:
             ScoreSchema: Score data with first team score and second team score
         """
-        async with session:
-            try:
-                stmt = select(Score).where(Score.score_id == score_id)
-                result = await session.execute(stmt)
-                result = result.scalars().first()
+        try:
+            stmt = select(Score).where(Score.score_id == score_id)
+            result = await session.execute(stmt)
+            result = result.scalars().first()
 
-                if result is None:
-                    return None
+            if result is None:
+                return None
 
-                score_data = ScoreSchema(
-                    score_id=result.score_id,
-                    team0_score=result.team0_score,
-                    team1_score=result.team1_score,
-                )
-                return score_data
-            except Exception as e:
-                logging.error(f"Failed to read score data: {e}")
+            score_data = ScoreSchema(
+                score_id=result.score_id,
+                team0_score=result.team0_score,
+                team1_score=result.team1_score,
+            )
+            return score_data
+        except Exception as e:
+            logging.error(f"Failed to read score data: {e}")
 
     @staticmethod
     async def read_team_id(team_name: str, session: AsyncSession) -> UUID:
@@ -413,31 +402,30 @@ class ReadData:
         Returns:
             UUID: Team id
         """
-        async with session:
-            try:
-                stmt = (
-                    select(Match)
-                    .where(
-                        (Match.first_team_name == team_name)
-                        | (Match.second_team_name == team_name)
-                    )
-                    .order_by(desc(Match.created_at))
-                    .limit(1)
+        try:
+            stmt = (
+                select(Match)
+                .where(
+                    (Match.first_team_name == team_name)
+                    | (Match.second_team_name == team_name)
                 )
-                result = await session.execute(stmt)
-                result = result.scalars().all()
-                if result is None:
-                    return None
-
-                if result[0].first_team_name == team_name:
-                    return result[0].first_team_id
-                elif result[0].second_team_name == team_name:
-                    return result[0].second_team_id
-                else:
-                    return None
-            except Exception as e:
-                logging.error(f"Failed to read team player data: {e}")
+                .order_by(desc(Match.created_at))
+                .limit(1)
+            )
+            result = await session.execute(stmt)
+            result = result.scalars().all()
+            if result is None:
                 return None
+
+            if result[0].first_team_name == team_name:
+                return result[0].first_team_id
+            elif result[0].second_team_name == team_name:
+                return result[0].second_team_id
+            else:
+                return None
+        except Exception as e:
+            logging.error(f"Failed to read team player data: {e}")
+            return None
 
     @staticmethod
     async def read_player_id(
@@ -452,20 +440,19 @@ class ReadData:
         Returns:
             UUID: Player id
         """
-        async with session:
-            try:
-                stmt = select(Player).where(
-                    (Player.player_name == player_name) & (Player.team_id == team_id)
-                )
-                result = await session.execute(stmt)
-                result = result.scalars().first()
+        try:
+            stmt = select(Player).where(
+                (Player.player_name == player_name) & (Player.team_id == team_id)
+            )
+            result = await session.execute(stmt)
+            result = result.scalars().first()
 
-                if result is None:
-                    return None
+            if result is None:
+                return None
 
-                return result.player_id
-            except Exception as e:
-                logging.error(f"Failed to read player id data: {e}")
+            return result.player_id
+        except Exception as e:
+            logging.error(f"Failed to read player id data: {e}")
 
     @staticmethod
     async def read_player_data(player_id: UUID, session: AsyncSession) -> PlayerSchema:
@@ -477,21 +464,20 @@ class ReadData:
         Returns:
             PlayerSchema: Player data with player name, team id, max velocity, shot dispersion rate
         """
-        async with session:
-            try:
-                stmt = select(Player).where(Player.player_id == player_id)
-                result = await session.execute(stmt)
-                result = result.scalars().first()
+        try:
+            stmt = select(Player).where(Player.player_id == player_id)
+            result = await session.execute(stmt)
+            result = result.scalars().first()
 
-                if result is None:
-                    return None
+            if result is None:
+                return None
 
-                player_data = PlayerSchema.model_validate(result)
+            player_data = PlayerSchema.model_validate(result)
 
-                return player_data
+            return player_data
 
-            except Exception as e:
-                logging.error(f"Failed to read player data: {e}")
+        except Exception as e:
+            logging.error(f"Failed to read player data: {e}")
 
     @staticmethod
     async def read_simulator_name(match_id, session: AsyncSession) -> str:
@@ -503,19 +489,17 @@ class ReadData:
         Returns:
             str: Simulator name
         """
-        async with session:
-            try:
-                stmt = select(Match.simulator).where(Match.match_id == match_id)
-                result = await session.execute(stmt)
-                result = result.scalars().first()
-                simulator_name = result.simulator.simulator_name
-                return simulator_name
-            except Exception as e:
-                logging.error(f"Failed to read simulator name: {e}")
+        try:
+            stmt = select(Match.simulator).where(Match.match_id == match_id)
+            result = await session.execute(stmt)
+            result = result.scalars().first()
+            simulator_name = result.simulator.simulator_name
+            return simulator_name
+        except Exception as e:
+            logging.error(f"Failed to read simulator name: {e}")
 
 
 class CreateData:
-
     @staticmethod
     async def create_match_data(match: MatchDataSchema, session: AsyncSession):
         """Create match data with score, tournament, simulator data
@@ -524,51 +508,51 @@ class CreateData:
             match (MatchDataSchema): Match data with score, tournament, simulator data
             session (AsyncSession): AsyncSession object to interact with database
         """
-        async with session:
-            try:
-                new_score = Score(
-                    score_id=match.score.score_id,
-                    team0_score=match.score.team0_score,
-                    team1_score=match.score.team1_score,
-                )
-                new_simulator = PhysicalSimulator(
-                    physical_simulator_id=match.simulator.physical_simulator_id,
-                    simulator_name=match.simulator.simulator_name,
-                )
-                new_tournament = Tournament(
-                    tournament_id=match.tournament.tournament_id,
-                    tournament_name=match.tournament.tournament_name,
-                )
+        try:
+            new_score = Score(
+                score_id=match.score.score_id,
+                team0_score=match.score.team0_score,
+                team1_score=match.score.team1_score,
+            )
+            new_simulator = PhysicalSimulator(
+                physical_simulator_id=match.simulator.physical_simulator_id,
+                simulator_name=match.simulator.simulator_name,
+            )
+            new_tournament = Tournament(
+                tournament_id=match.tournament.tournament_id,
+                tournament_name=match.tournament.tournament_name,
+            )
 
-                new_match = Match(
-                    match_id=match.match_id,
-                    first_team_name=match.first_team_name,
-                    second_team_name=match.second_team_name,
-                    first_team_id=match.first_team_id,
-                    first_team_player1_id=match.first_team_player1_id,
-                    first_team_player2_id=match.first_team_player2_id,
-                    first_team_player3_id=match.first_team_player3_id,
-                    first_team_player4_id=match.first_team_player4_id,
-                    second_team_id=match.second_team_id,
-                    second_team_player1_id=match.second_team_player1_id,
-                    second_team_player2_id=match.second_team_player2_id,
-                    second_team_player3_id=match.second_team_player3_id,
-                    second_team_player4_id=match.second_team_player4_id,
-                    score_id=match.score_id,
-                    time_limit=match.time_limit,
-                    extra_end_time_limit=match.extra_end_time_limit,
-                    standard_end_count=match.standard_end_count,
-                    physical_simulator_id=match.physical_simulator_id,
-                    tournament_id=match.tournament_id,
-                    match_name=match.match_name,
-                    created_at=match.created_at,
-                    started_at=match.started_at,
-                )
-                session.add_all([new_score, new_simulator, new_tournament, new_match])
-                await session.commit()
+            new_match = Match(
+                match_id=match.match_id,
+                first_team_name=match.first_team_name,
+                second_team_name=match.second_team_name,
+                first_team_id=match.first_team_id,
+                first_team_player1_id=match.first_team_player1_id,
+                first_team_player2_id=match.first_team_player2_id,
+                first_team_player3_id=match.first_team_player3_id,
+                first_team_player4_id=match.first_team_player4_id,
+                second_team_id=match.second_team_id,
+                second_team_player1_id=match.second_team_player1_id,
+                second_team_player2_id=match.second_team_player2_id,
+                second_team_player3_id=match.second_team_player3_id,
+                second_team_player4_id=match.second_team_player4_id,
+                score_id=match.score_id,
+                time_limit=match.time_limit,
+                extra_end_time_limit=match.extra_end_time_limit,
+                standard_end_count=match.standard_end_count,
+                physical_simulator_id=match.physical_simulator_id,
+                tournament_id=match.tournament_id,
+                match_name=match.match_name,
+                created_at=match.created_at,
+                started_at=match.started_at,
+            )
+            session.add_all([new_score, new_simulator, new_tournament, new_match])
+            await session.commit()
 
-            except Exception as e:
-                logging.error(f"Failed to create match data: {e}")
+        except Exception as e:
+            await session.rollback()
+            logging.error(f"Failed to create match data: {e}")
 
     @staticmethod
     async def create_state_data(state: StateSchema, session: AsyncSession):
@@ -577,34 +561,34 @@ class CreateData:
         Args:
             state (StateSchema): State data with stone coordinate data
         """
-        async with session:
-            try:
-                new_stone_coordinate = StoneCoordinate(
-                    stone_coordinate_id=state.stone_coordinate.stone_coordinate_id,
-                    stone_coordinate_data=state.stone_coordinate.stone_coordinate_data,
-                )
+        try:
+            new_stone_coordinate = StoneCoordinate(
+                stone_coordinate_id=state.stone_coordinate.stone_coordinate_id,
+                stone_coordinate_data=state.stone_coordinate.stone_coordinate_data,
+            )
 
-                new_state = State(
-                    state_id=state.state_id,
-                    winner_team_id=state.winner_team_id,
-                    match_id=state.match_id,
-                    end_number=state.end_number,
-                    shot_number=state.shot_number,
-                    total_shot_number=state.total_shot_number,
-                    first_team_remaining_time=state.first_team_remaining_time,
-                    second_team_remaining_time=state.second_team_remaining_time,
-                    first_team_extra_end_remaining_time=state.first_team_extra_end_remaining_time,
-                    second_team_extra_end_remaining_time=state.second_team_extra_end_remaining_time,
-                    stone_coordinate_id=state.stone_coordinate_id,
-                    score_id=state.score_id,
-                    shot_id=state.shot_id,
-                    next_shot_team_id=state.next_shot_team_id,
-                    created_at=state.created_at,
-                )
-                session.add_all([new_stone_coordinate, new_state])
-                await session.commit()
-            except Exception as e:
-                logging.error(f"Failed to create state data: {e}")
+            new_state = State(
+                state_id=state.state_id,
+                winner_team_id=state.winner_team_id,
+                match_id=state.match_id,
+                end_number=state.end_number,
+                shot_number=state.shot_number,
+                total_shot_number=state.total_shot_number,
+                first_team_remaining_time=state.first_team_remaining_time,
+                second_team_remaining_time=state.second_team_remaining_time,
+                first_team_extra_end_remaining_time=state.first_team_extra_end_remaining_time,
+                second_team_extra_end_remaining_time=state.second_team_extra_end_remaining_time,
+                stone_coordinate_id=state.stone_coordinate_id,
+                score_id=state.score_id,
+                shot_id=state.shot_id,
+                next_shot_team_id=state.next_shot_team_id,
+                created_at=state.created_at,
+            )
+            session.add_all([new_stone_coordinate, new_state])
+            await session.commit()
+        except Exception as e:
+            await session.rollback()
+            logging.error(f"Failed to create state data: {e}")
 
     @staticmethod
     async def create_stone_data(stone: StoneCoordinateSchema, session: AsyncSession):
@@ -613,16 +597,16 @@ class CreateData:
         Args:
             stone (StoneCoordinateSchema): Stone coordinate data
         """
-        async with session:
-            try:
-                new_stone = StoneCoordinate(
-                    stone_coordinate_id=stone.stone_coordinate_id,
-                    stone_coordinate_data=stone.stone_coordinate_data,
-                )
-                session.add(new_stone)
-                await session.commit()
-            except Exception as e:
-                logging.error(f"Failed to create stone data: {e}")
+        try:
+            new_stone = StoneCoordinate(
+                stone_coordinate_id=stone.stone_coordinate_id,
+                stone_coordinate_data=stone.stone_coordinate_data,
+            )
+            session.add(new_stone)
+            await session.commit()
+        except Exception as e:
+            await session.rollback()
+            logging.error(f"Failed to create stone data: {e}")
 
     @staticmethod
     async def create_score_data(score: ScoreSchema, session: AsyncSession):
@@ -631,17 +615,17 @@ class CreateData:
         Args:
             score (ScoreSchema): Score data with first team score and second team score
         """
-        async with session:
-            try:
-                new_score = Score(
-                    score_id=score.score_id,
-                    team0_score=score.team0_score,
-                    team1_score=score.team1_score,
-                )
-                session.add(new_score)
-                await session.commit()
-            except Exception as e:
-                logging.error(f"Failed to create score data: {e}")
+        try:
+            new_score = Score(
+                score_id=score.score_id,
+                team0_score=score.team0_score,
+                team1_score=score.team1_score,
+            )
+            session.add(new_score)
+            await session.commit()
+        except Exception as e:
+            await session.rollback()
+            logging.error(f"Failed to create score data: {e}")
 
     @staticmethod
     async def create_shot_info_data(shot_info: ShotInfoSchema, session: AsyncSession):
@@ -650,25 +634,25 @@ class CreateData:
         Args:
             shot_info (ShotInfoSchema): _description_
         """
-        async with session:
-            try:
-                new_shot_info = ShotInfo(
-                    shot_id=shot_info.shot_id,
-                    player_id=shot_info.player_id,
-                    team_id=shot_info.team_id,
-                    trajectory_id=shot_info.trajectory_id,
-                    pre_shot_state_id=shot_info.pre_shot_state_id,
-                    post_shot_state_id=shot_info.post_shot_state_id,
-                    actual_translation_velocity=shot_info.actual_translation_velocity,
-                    translation_velocity=shot_info.translation_velocity,
-                    angular_velocity_sign=shot_info.angular_velocity_sign,
-                    angular_velocity=shot_info.angular_velocity,
-                    shot_angle=shot_info.shot_angle,
-                )
-                session.add(new_shot_info)
-                await session.commit()
-            except Exception as e:
-                logging.error(f"Failed to create shot info data: {e}")
+        try:
+            new_shot_info = ShotInfo(
+                shot_id=shot_info.shot_id,
+                player_id=shot_info.player_id,
+                team_id=shot_info.team_id,
+                trajectory_id=shot_info.trajectory_id,
+                pre_shot_state_id=shot_info.pre_shot_state_id,
+                post_shot_state_id=shot_info.post_shot_state_id,
+                actual_translation_velocity=shot_info.actual_translation_velocity,
+                translation_velocity=shot_info.translation_velocity,
+                angular_velocity_sign=shot_info.angular_velocity_sign,
+                angular_velocity=shot_info.angular_velocity,
+                shot_angle=shot_info.shot_angle,
+            )
+            session.add(new_shot_info)
+            await session.commit()
+        except Exception as e:
+            await session.rollback()
+            logging.error(f"Failed to create shot info data: {e}")
 
     @staticmethod
     async def create_tournament_data(
@@ -679,16 +663,16 @@ class CreateData:
         Args:
             tournament (TournamentSchema): Tournament data with tournament name
         """
-        async with session:
-            try:
-                new_tournament = Tournament(
-                    tournament_id=tournament.tournament_id,
-                    tournament_name=tournament.tournament_name,
-                )
-                session.add(new_tournament)
-                await session.commit()
-            except Exception as e:
-                logging.error(f"Failed to create tournament data: {e}")
+        try:
+            new_tournament = Tournament(
+                tournament_id=tournament.tournament_id,
+                tournament_name=tournament.tournament_name,
+            )
+            session.add(new_tournament)
+            await session.commit()
+        except Exception as e:
+            await session.rollback()
+            logging.error(f"Failed to create tournament data: {e}")
 
     @staticmethod
     async def create_physical_simulator_data(
@@ -699,16 +683,16 @@ class CreateData:
         Args:
             simulator (PhysicalSimulatorSchema): Physical simulator data with simulator name
         """
-        async with session:
-            try:
-                new_simulator = PhysicalSimulator(
-                    physical_simulator_id=simulator.physical_simulator_id,
-                    simulator_name=simulator.simulator_name,
-                )
-                session.add(new_simulator)
-                await session.commit()
-            except Exception as e:
-                logging.error(f"Failed to create physical simulator data: {e}")
+        try:
+            new_simulator = PhysicalSimulator(
+                physical_simulator_id=simulator.physical_simulator_id,
+                simulator_name=simulator.simulator_name,
+            )
+            session.add(new_simulator)
+            await session.commit()
+        except Exception as e:
+            await session.rollback()
+            logging.error(f"Failed to create physical simulator data: {e}")
 
     @staticmethod
     async def create_default_player_data(player: PlayerSchema, session: AsyncSession):
@@ -717,34 +701,12 @@ class CreateData:
         Args:
             player (PlayerSchema): Player data with player name, team id, max velocity, shot dispersion rate
         """
-        async with session:
-            try:
-                result = await session.execute(
-                    select(Player).where(Player.player_id == player.player_id)
-                )
-                player_data = result.scalars().first()
-                if not player_data:
-                    new_player = Player(
-                        player_id=player.player_id,
-                        team_id=player.team_id,
-                        max_velocity=player.max_velocity,
-                        shot_dispersion_rate=player.shot_dispersion_rate,
-                        player_name=player.player_name,
-                    )
-                    session.add(new_player)
-                    await session.commit()
-            except Exception as e:
-                logging.error(f"Failed to create default player data: {e}")
-
-    @staticmethod
-    async def create_player_data(player: PlayerSchema, session: AsyncSession):
-        """Create player data with player name, team id, max velocity, shot dispersion rate
-
-        Args:
-            player (PlayerSchema): Player data with player name, team id, max velocity, shot dispersion rate
-        """
-        async with session:
-            try:
+        try:
+            result = await session.execute(
+                select(Player).where(Player.player_id == player.player_id)
+            )
+            player_data = result.scalars().first()
+            if not player_data:
                 new_player = Player(
                     player_id=player.player_id,
                     team_id=player.team_id,
@@ -754,8 +716,30 @@ class CreateData:
                 )
                 session.add(new_player)
                 await session.commit()
-            except Exception as e:
-                logging.error(f"Failed to create player data: {e}")
+        except Exception as e:
+            await session.rollback()
+            logging.error(f"Failed to create default player data: {e}")
+
+    @staticmethod
+    async def create_player_data(player: PlayerSchema, session: AsyncSession):
+        """Create player data with player name, team id, max velocity, shot dispersion rate
+
+        Args:
+            player (PlayerSchema): Player data with player name, team id, max velocity, shot dispersion rate
+        """
+        try:
+            new_player = Player(
+                player_id=player.player_id,
+                team_id=player.team_id,
+                max_velocity=player.max_velocity,
+                shot_dispersion_rate=player.shot_dispersion_rate,
+                player_name=player.player_name,
+            )
+            session.add(new_player)
+            await session.commit()
+        except Exception as e:
+            await session.rollback()
+            logging.error(f"Failed to create player data: {e}")
 
 
 class CollectID:
@@ -766,12 +750,11 @@ class CollectID:
         Returns:
             List[UUID]: List of state ids
         """
-        async with session:
-            try:
-                stmt = select(State.state_id)
-                result = await session.execute(stmt)
-                state_ids = result.scalars().all()
-                return state_ids
+        try:
+            stmt = select(State.state_id)
+            result = await session.execute(stmt)
+            state_ids = result.scalars().all()
+            return state_ids
 
-            except Exception as e:
-                logging.error(f"Failed to collect state ids: {e}")
+        except Exception as e:
+            logging.error(f"Failed to collect state ids: {e}")

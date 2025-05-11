@@ -104,7 +104,7 @@ CREATE TABLE IF NOT EXISTS state (
     stone_coordinate_id UUID DEFAULT gen_random_uuid(),
     score_id UUID DEFAULT gen_random_uuid(),
     shot_id UUID,
-    next_shot_team_id UUID DEFAULT gen_random_uuid(),
+    next_shot_team_id UUID,
     created_at TIMESTAMP DEFAULT NOW()
 );
 
@@ -131,9 +131,7 @@ ALTER TABLE match_data
 -- shot_info → player / trajectory / state(x2)
 ALTER TABLE shot_info
   ADD CONSTRAINT fk_shot_player
-    FOREIGN KEY(player_id) REFERENCES player(player_id) ON DELETE CASCADE,
-  ADD CONSTRAINT fk_shot_trajectory
-    FOREIGN KEY(trajectory_id) REFERENCES trajectory(trajectory_id) ON DELETE CASCADE;
+    FOREIGN KEY(player_id) REFERENCES player(player_id) ON DELETE CASCADE;
 
 -- state → match_data / score / shot_info / stone_coordinate
 ALTER TABLE state

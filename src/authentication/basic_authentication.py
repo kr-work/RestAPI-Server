@@ -1,8 +1,9 @@
+import argparse
 from fastapi import APIRouter, Depends, status, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.orm import Session
 from sqlalchemy import select, desc
 import secrets
 import hashlib
@@ -17,16 +18,26 @@ from src.models.basic_authentication_models import UserModel
 from src.authentication.basic_authentication_crud import (
     CreateAuthentication,
     ReadAuthentication,
+    DeleteAuthentication,
 )
+from src.create_sqlite_engine import engine
 from src.models.dc_models import MatchNameModel
 from src.load_secrets import pepper_data
 
+parser = argparse.ArgumentParser(description="Basic Authentication")
+parser.add_argument("--username", type=str, help="Username")
+parser.add_argument("--password", type=str, help="Password")
+
+args = parser.parse_args()
+
+Session = async_sessionmaker(autocommit=False, class_=AsyncSession, bind=engine)
 basic_authentication_router = APIRouter()
 security = HTTPBasic()
 create_auth = CreateAuthentication()
 read_auth = ReadAuthentication()
 read_data = ReadData()
 update_data = UpdateData()
+delete_auth = DeleteAuthentication()
 
 
 class BasicAuthentication:
@@ -50,24 +61,25 @@ class BasicAuthentication:
         """
         # await create_auth.create_user_data("user", "password")
 
-        user_data: UserModel = await read_auth.read_user_data(credentials.username)
-        if user_data is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid username",
-                headers={"WWW-Authenticate": "Basic"},
-            )
+        async with Session() as session:
+            user_data: UserModel = await read_auth.read_user_data(credentials.username, session)
+            if user_data is None:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid username",
+                    headers={"WWW-Authenticate": "Basic"},
+                )
 
-        hashed_password = hashlib.sha256(
-            (credentials.password + user_data.salt + pepper_data).encode()
-        ).hexdigest()
+            hashed_password = hashlib.sha256(
+                (credentials.password + user_data.salt + pepper_data).encode()
+            ).hexdigest()
 
-        if not secrets.compare_digest(hashed_password, user_data.hash_password):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid password",
-                headers={"WWW-Authenticate": "Basic"},
-            )
+            if not secrets.compare_digest(hashed_password, user_data.hash_password):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid password",
+                    headers={"WWW-Authenticate": "Basic"},
+                )
         return user_data
 
     async def check_match_data(self, user_data: UserModel, match_id: UUID) -> str:
@@ -84,7 +96,8 @@ class BasicAuthentication:
         Returns:
             bool: Basic authentication result
         """
-        match_team_name: str = await read_auth.read_match_data(user_data, match_id)
+        async with Session() as session:
+            match_team_name: str = await read_auth.read_match_data(user_data, match_id, session)
         if match_team_name is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -93,14 +106,32 @@ class BasicAuthentication:
             )
         return match_team_name
 
-    #
+    async def create_match_data(self, user_data: UserModel, match_id: UUID, match_team_name: str):
+        """Create match data for the user. This function is called only once before the start of the match
+
+        Args:
+            user_data (UserModel): _description_
+            match_id (UUID): _description_
+            match_team_name (str): _description_
+
+        Returns:
+            bool: Basic authentication result
+        """
+        async with Session() as session:
+            await create_auth.create_match_data(user_data, match_id, match_team_name, session)
+
     async def store_user_data(self, user_name: str, password: str) -> None:
-        await create_auth.create_user_data(user_name, password)
+        async with Session() as session:
+            # create user data
+            await create_auth.create_user_data(user_name, password, session)
 
     # read all user data
     async def read_user_data(self) -> UserModel:
         return await read_auth.read_user_data(username="user")
-
+    
+    async def delete_expired_match_data(self) -> None:
+        async with Session() as session:
+            await delete_auth.delete_expired_match_data(session)
 
 async def main(user_name: str, password: str):
     basic_auth = BasicAuthentication()
@@ -110,4 +141,4 @@ async def main(user_name: str, password: str):
 
 
 if __name__ == "__main__":
-    asyncio.run(main("user", "password"))
+    asyncio.run(main(args.username, args.password))

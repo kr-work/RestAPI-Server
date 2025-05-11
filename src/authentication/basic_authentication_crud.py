@@ -1,21 +1,18 @@
 from datetime import datetime, timedelta
+from sqlalchemy.ext.asyncio import AsyncSession
 import hashlib
 import logging
 import secrets
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import select, desc
-from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
-from typing import Tuple
+from sqlalchemy import select
 from uuid import UUID
 
+from src.create_sqlite_engine import engine
 from src.models.basic_authentication_shemas import MatchAuthentication, UserTable, Base
 from src.models.basic_authentication_models import UserModel
 from src.models.dc_models import MatchNameModel
-from src.create_sqlite_engine import engine
 from src.load_secrets import pepper_data
 
-Session = async_sessionmaker(autocommit=False, class_=AsyncSession, bind=engine)
-session = Session()
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("aiosqlite").setLevel(logging.WARNING)
 
@@ -32,7 +29,7 @@ class CreateAuthentication:
             logging.warning(f"Table already exists or other integrity error: {e}")
 
     @staticmethod
-    async def create_user_data(username: str, password: str):
+    async def create_user_data(username: str, password: str, session: AsyncSession) -> None:
         """Create user data to authenticate the user
 
         Args:
@@ -41,41 +38,42 @@ class CreateAuthentication:
         await CreateAuthentication.create_table()
         salt = secrets.token_hex(8)
         password = hashlib.sha256((password + salt + pepper_data).encode()).hexdigest()
-        async with session:
-            try:
-                new_user = UserTable(
-                    username=username, hash_password=password, salt=salt
-                )
-                session.add(new_user)
-                await session.commit()
 
-            except Exception as e:
-                logging.error(f"Error creating user data: {e}")
+        try:
+            new_user = UserTable(
+                username=username, hash_password=password, salt=salt
+            )
+            session.add(new_user)
+            await session.commit()
+
+        except Exception as e:
+            await session.rollback()
+            logging.error(f"Error creating user data: {e}")
 
     @staticmethod
     async def create_match_data(
-        user_data: UserModel, match_id: UUID, match_team_name: str
+        user_data: UserModel, match_id: UUID, match_team_name: str, session: AsyncSession
     ) -> None:
-        async with session:
-            try:
-                match_auth = MatchAuthentication(
-                    username=user_data.username,
-                    hash_password=user_data.hash_password,
-                    match_team_name=match_team_name,
-                    match_id=match_id,
-                    created_at=datetime.now(),
-                    expired_at=datetime.now() + timedelta(days=14),
-                )
-                session.add(match_auth)
-                await session.commit()
+        try:
+            match_auth = MatchAuthentication(
+                username=user_data.username,
+                hash_password=user_data.hash_password,
+                match_team_name=match_team_name,
+                match_id=match_id,
+                created_at=datetime.now(),
+                expired_at=datetime.now() + timedelta(days=14),
+            )
+            session.add(match_auth)
+            await session.commit()
 
-            except Exception as e:
-                logging.error(f"Error creating match data: {e}")
+        except Exception as e:
+            await session.rollback()
+            logging.error(f"Error creating match data: {e}")
 
 
 class ReadAuthentication:
     @staticmethod
-    async def read_user_data(username: str) -> UserModel:
+    async def read_user_data(username: str, session: AsyncSession) -> UserModel:
         """Read user data to get salt and password hash
 
         Args:
@@ -84,27 +82,26 @@ class ReadAuthentication:
         Returns:
             UserModel: username, password and salt
         """
-        async with session:
-            try:
-                stmt = select(UserTable).where(UserTable.username == username)
-                result = await session.execute(stmt)
-                result = result.scalars().first()
-                if result is None:
-                    logging.error("User not found")
-                    return None
-                user = UserModel(
-                    username=result.username,
-                    hash_password=result.hash_password,
-                    salt=result.salt,
-                )
-                return user
-
-            except Exception as e:
-                logging.error(f"Error reading user data: {e}")
+        try:
+            stmt = select(UserTable).where(UserTable.username == username)
+            result = await session.execute(stmt)
+            result = result.scalars().first()
+            if result is None:
+                logging.error("User not found")
                 return None
+            user = UserModel(
+                username=result.username,
+                hash_password=result.hash_password,
+                salt=result.salt,
+            )
+            return user
+
+        except Exception as e:
+            logging.error(f"Error reading user data: {e}")
+            return None
 
     @staticmethod
-    async def read_match_data(user_data: UserModel, match_id: UUID) -> str:
+    async def read_match_data(user_data: UserModel, match_id: UUID, session: AsyncSession) -> str:
         """Read match data to get match team name("team0" or "team1")
 
         Args:
@@ -114,67 +111,65 @@ class ReadAuthentication:
         Returns:
             MatchAuthenticationModel: match team name and match id
         """
-        async with session:
-            try:
-                stmt = select(MatchAuthentication).where(
-                    MatchAuthentication.username == user_data.username,
-                    MatchAuthentication.match_id == match_id,
-                )
-                result = await session.execute(stmt)
-                result = result.scalars().first()
-                if result is None:
-                    logging.error("Match data not found")
-                    return None
-                match_team_name = result.match_team_name
-                return match_team_name
-
-            except Exception as e:
-                logging.error(f"Error reading match data: {e}")
+        try:
+            stmt = select(MatchAuthentication).where(
+                MatchAuthentication.username == user_data.username,
+                MatchAuthentication.match_id == match_id,
+            )
+            result = await session.execute(stmt)
+            result = result.scalars().first()
+            if result is None:
+                logging.error("Match data not found")
                 return None
+            match_team_name = result.match_team_name
+            return match_team_name
+
+        except Exception as e:
+            logging.error(f"Error reading match data: {e}")
+            return None
 
 
 class DeleteAuthentication:
     @staticmethod
-    async def delete_match_data(username: str, match_id: UUID) -> None:
+    async def delete_match_data(username: str, match_id: UUID, session: AsyncSession) -> None:
         """Delete match data for the user
 
         Args:
             username (str): username of the user
             match_id (UUID): match id to delete
         """
-        async with session:
-            try:
-                stmt = select(MatchAuthentication).where(
-                    MatchAuthentication.username == username,
-                    MatchAuthentication.match_id == match_id,
-                )
-                result = await session.execute(stmt)
-                result = result.scalars().first()
-                if result is None:
-                    logging.error("Match data not found")
-                    return None
-                await session.delete(result)
-                await session.commit()
+        try:
+            stmt = select(MatchAuthentication).where(
+                MatchAuthentication.username == username,
+                MatchAuthentication.match_id == match_id,
+            )
+            result = await session.execute(stmt)
+            result = result.scalars().first()
+            if result is None:
+                logging.error("Match data not found")
+                return None
+            await session.delete(result)
+            await session.commit()
 
-            except Exception as e:
-                logging.error(f"Error deleting match data: {e}")
+        except Exception as e:
+            logging.error(f"Error deleting match data: {e}")
 
     @staticmethod
-    async def delete_expired_match_data() -> None:
+    async def delete_expired_match_data(session: AsyncSession):
         """Delete expired match data"""
-        async with session:
-            try:
-                stmt = select(MatchAuthentication).where(
-                    MatchAuthentication.expired_at < datetime.now()
-                )
-                result = await session.execute(stmt)
-                result = result.scalars().all()
-                if result is None:
-                    logging.error("No expired match data found")
-                    return None
-                for match in result:
-                    await session.delete(match)
-                await session.commit()
+        try:
+            stmt = select(MatchAuthentication).where(
+                MatchAuthentication.expired_at < datetime.now()
+            )
+            result = await session.execute(stmt)
+            result = result.scalars().all()
+            if result is None:
+                logging.error("No expired match data found")
+                return None
+            for match in result:
+                await session.delete(match)
+            await session.commit()
 
-            except Exception as e:
-                logging.error(f"Error deleting expired match data: {e}")
+        except Exception as e:
+            await session.rollback()
+            logging.error(f"Error deleting expired match data: {e}")
