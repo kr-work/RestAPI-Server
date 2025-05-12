@@ -1,10 +1,10 @@
 -- ======================================
--- 1) 拡張を有効化
+-- 1) Enable Extension
 -- ======================================
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- ======================================
--- 2) テーブル本体をすべて作成（FKはあとで）
+-- 2) Create all table bodies
 -- ======================================
 -- Score
 CREATE TABLE IF NOT EXISTS score (
@@ -109,7 +109,7 @@ CREATE TABLE IF NOT EXISTS state (
 );
 
 -- ======================================
--- 3) 外部キー制約をすべて追加
+-- 3)　Add all foreign key constraints
 -- ======================================
 -- match_data → score / physical_simulator / tournament / player(x8)
 ALTER TABLE match_data
