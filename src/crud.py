@@ -185,13 +185,14 @@ class UpdateData:
 
     @staticmethod
     async def update_next_shot_team(
-        match_id: UUID, session: AsyncSession, next_shot_team: UUID
+        match_id: UUID, next_shot_team: UUID, session: AsyncSession
     ):
-        """
+        """Update next shot team in State table
 
         Args:
             match_id (UUID): To identify the latest state
             next_shot_team (UUID): Next shot team id
+            session (AsyncSession): AsyncSession object to interact with database
         """
         try:
             stmt = (
@@ -218,6 +219,7 @@ class UpdateData:
 
         Args:
             score (ScoreSchema): New score data
+            session (AsyncSession): AsyncSession object to interact with database
         """
         try:
             stmt = select(Score).where(Score.score_id == score.score_id)
@@ -241,6 +243,7 @@ class ReadData:
 
         Args:
             match_id (UUID): To identify the match
+            session (AsyncSession): AsyncSession object to interact with database
 
         Returns:
             MatchDataSchema: Match data with score, tournament, simulator data
@@ -273,6 +276,7 @@ class ReadData:
 
         Args:
             state_id (UUID): To get the specific state data
+            session (AsyncSession): AsyncSession object to interact with database
 
         Returns:
             StateSchema: State data with stone coordinate data
@@ -326,6 +330,7 @@ class ReadData:
 
         Args:
             match_id (UUID): To identify the latest state
+            session (AsyncSession): AsyncSession object to interact with database
 
         Returns:
             StateSchema: Latest state data with stone coordinate data
@@ -369,6 +374,7 @@ class ReadData:
         Args:
             match_id (UUID): To identify the match
             end_number (int): To identify the end number
+            session (AsyncSession): AsyncSession object to interact with database
 
         Returns:
             List[StateSchema]: State data in specific end number
@@ -475,14 +481,15 @@ class ReadData:
                 .limit(1)
             )
             result = await session.execute(stmt)
-            result = result.scalars().all()
+            result = result.scalars().first()
+            match_data = MatchDataSchema.model_validate(result[0])
             if result is None:
                 return None
 
-            if result[0].first_team_name == team_name:
-                return result[0].first_team_id
-            elif result[0].second_team_name == team_name:
-                return result[0].second_team_id
+            if match_data.first_team_name == team_name:
+                return match_data.first_team_id
+            elif match_data.second_team_name == team_name:
+                return match_data.second_team_id
             else:
                 return None
         except Exception as e:
@@ -542,7 +549,7 @@ class ReadData:
             logging.error(f"Failed to read player data: {e}")
 
     @staticmethod
-    async def read_simulator_name(match_id, session: AsyncSession) -> str:
+    async def read_simulator_name(match_id: UUID, session: AsyncSession) -> str:
         """Read simulator name from match data
 
         Args:
@@ -560,6 +567,32 @@ class ReadData:
         except Exception as e:
             logging.error(f"Failed to read simulator name: {e}")
 
+    @staticmethod
+    async def read_simualtor_id(simulator_name: str, session: AsyncSession) -> UUID:
+        """Read simulator id from simulator name(fcv1)
+
+        Args:
+            simulator_name (str): Now, fcv1 only
+            session (AsyncSession): AsyncSession object to interact with database
+
+        Returns:
+            UUID: _description_
+        """
+        try:
+            stmt = select(PhysicalSimulator).where(
+                PhysicalSimulator.simulator_name == simulator_name
+            )
+            result = await session.execute(stmt)
+            result = result.scalars().first()
+
+            if result is None:
+                return None
+
+            return result.physical_simulator_id
+        except Exception as e:
+            logging.error(f"Failed to read simulator id: {e}")
+            return None
+
 
 class CreateData:
     @staticmethod
@@ -575,10 +608,6 @@ class CreateData:
                 score_id=match.score.score_id,
                 team0_score=match.score.team0_score,
                 team1_score=match.score.team1_score,
-            )
-            new_simulator = PhysicalSimulator(
-                physical_simulator_id=match.simulator.physical_simulator_id,
-                simulator_name=match.simulator.simulator_name,
             )
             new_tournament = Tournament(
                 tournament_id=match.tournament.tournament_id,
@@ -609,7 +638,7 @@ class CreateData:
                 created_at=match.created_at,
                 started_at=match.started_at,
             )
-            session.add_all([new_score, new_simulator, new_tournament, new_match])
+            session.add_all([new_score, new_tournament, new_match])
             await session.commit()
 
         except Exception as e:
@@ -746,12 +775,19 @@ class CreateData:
             simulator (PhysicalSimulatorSchema): Physical simulator data with simulator name
         """
         try:
-            new_simulator = PhysicalSimulator(
-                physical_simulator_id=simulator.physical_simulator_id,
-                simulator_name=simulator.simulator_name,
+            stmt = (
+                select(PhysicalSimulator)
+                .where(PhysicalSimulator.simulator_name == simulator.simulator_name)
             )
-            session.add(new_simulator)
-            await session.commit()
+            result = await session.execute(stmt)
+            result = result.scalars().first()
+            if result is None:
+                new_simulator = PhysicalSimulator(
+                    physical_simulator_id=simulator.physical_simulator_id,
+                    simulator_name=simulator.simulator_name,
+                )
+                session.add(new_simulator)
+                await session.commit()
         except Exception as e:
             await session.rollback()
             logging.error(f"Failed to create physical simulator data: {e}")
