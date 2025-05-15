@@ -344,16 +344,21 @@ class DCServer:
                 match_id, session, team_config_data.team_name, expected_match_team_name
             )
 
-            await basic_auth.create_match_data(
-                user_data,
-                match_id,
-                match_team_name,
-            )
-
+            # Check if the match data is valid
             if match_team_name is None:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="This match has already started.",
+                match_team_name = await basic_auth.check_match_data(
+                    user_data, match_id
+                )
+                if match_team_name is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="This match has already started.",
+                    )
+            else:
+                await basic_auth.create_match_data(
+                    user_data,
+                    match_id,
+                    match_team_name,
                 )
 
             if team_config_data.use_default_config:
@@ -413,7 +418,7 @@ class DCServer:
             redis_subscriber.event_generator(channel, redis),
             media_type="text/event-stream; charset=utf-8",
             headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
-        )
+    )
 
     @staticmethod
     @match_router.post("/shot-info")
@@ -610,14 +615,20 @@ class DCServer:
                         if match_team_name == "team1"
                         else match_data.second_team_id
                     )
-                elif scored_team == 0:
-                    team0_score[end_number] = score
-                    team1_score[end_number] = 0
-                    next_end_first_shot_team_id = match_data.second_team_id
-                elif scored_team == 1:
-                    team0_score[end_number] = 0
-                    team1_score[end_number] = score
-                    next_end_first_shot_team_id = match_data.first_team_id
+
+                if end_number < match_data.standard_end_count:
+                    if scored_team == 0:
+                        team0_score[end_number] = score
+                        team1_score[end_number] = 0
+                        next_end_first_shot_team_id = match_data.second_team_id
+                    elif scored_team == 1:
+                        team0_score[end_number] = 0
+                        team1_score[end_number] = score
+                        next_end_first_shot_team_id = match_data.first_team_id
+                elif end_number >= match_data.standard_end_count:
+                    if scored_team == 0:
+                        team0_score[match_data.standard_end_count] = score
+                        team1_score[match_data.standard_end_count] = score
 
                 score_data = ScoreSchema(
                     score_id=pre_score_data.score_id,

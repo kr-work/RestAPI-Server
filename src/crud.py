@@ -337,6 +337,44 @@ class ReadData:
             logging.error(f"Failed to read latest state data: {e}")
 
     @staticmethod
+    async def read_state_data_in_end(
+        match_id: UUID, end_number: int, session: AsyncSession
+    ) -> List[StateSchema]:
+        """Read state data in specific end number from database
+
+        Args:
+            match_id (UUID): To identify the match
+            end_number (int): To identify the end number
+
+        Returns:
+            List[StateSchema]: State data in specific end number
+        """
+        try:
+            stmt = (
+                select(State)
+                .options(
+                    joinedload(State.stone_coordinate),
+                    joinedload(State.score),
+                )
+                .where(State.match_id == match_id, State.end_number == end_number)
+                .order_by(State.shot_number)
+            )
+            result = await session.execute(stmt)
+            result = result.scalars().all()
+
+            if result is None:
+                return None
+
+            state_data_list = [
+                StateSchema.model_validate(state) for state in result
+            ]
+            return state_data_list
+
+        except Exception as e:
+            logging.error(f"Failed to read state data in end: {e}")
+            return None
+
+    @staticmethod
     async def read_stone_data(
         stone_coordinate_id: UUID, session: AsyncSession
     ) -> StoneCoordinateSchema:
