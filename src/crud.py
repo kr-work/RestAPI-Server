@@ -1,6 +1,7 @@
 # import database
 import json
 import logging
+from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 from sqlalchemy.orm import joinedload
@@ -158,6 +159,29 @@ class UpdateData:
     #     except Exception as e:
     #         await session.rollback()
     #         logging.error(f"Failed to update winner team data: {e}")
+
+    @staticmethod
+    async def update_created_at_state_data(
+        state_id: UUID, session: AsyncSession):
+        """Update state table with created_at data
+        Args:
+            state_id (UUID): To identify the state
+            session (AsyncSession): AsyncSession object to interact with database
+        """
+        try:
+            stmt = (
+                select(State)
+                .where(State.state_id == state_id)
+            )
+            result = await session.execute(stmt)
+            result = result.scalars().first()
+            if result is None:
+                return False
+            result.created_at = datetime.now()
+            await session.commit()
+        except Exception as e:
+            await session.rollback()
+            logging.error(f"Failed to update created_at state data: {e}")
 
     @staticmethod
     async def update_next_shot_team(

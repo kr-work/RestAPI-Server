@@ -5,7 +5,7 @@ from typing import List
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from src.crud import ReadData
+from src.crud import ReadData, UpdateData
 from src.models.schema_models import StateSchema, MatchDataSchema
 from src.models.dc_models import StateModel
 from src.converter import DataConverter
@@ -15,35 +15,57 @@ HEART_BEAT = 15
 logging.basicConfig(level=logging.INFO)
 
 read_data = ReadData()
+update_data = UpdateData()
 data_converter = DataConverter()
 
 
 class RedisSubscriber:
-    def __init__(self, Session: async_sessionmaker, match_id: str):
+    def __init__(self, Session: async_sessionmaker, match_id: str, match_team_name: str):
         self.match_id: str = match_id
         self.Session: async_sessionmaker = Session
+        self.match_team_name: str = match_team_name
 
     async def event_generator(self, channel: str, redis: Redis):
         pubsub = redis.pubsub()
+        opponent_connected = False
+        match_data: MatchDataSchema = None
+
+        while not opponent_connected:
+            async with self.Session() as session:
+                match_data = await read_data.read_match_data(
+                    self.match_id, session
+                )
+                if match_data.first_team_name is not None and match_data.second_team_name is not None:
+                    opponent_connected = True
+                else:
+                    opponent_connected = False
+                    await asyncio.sleep(5)
 
         async with self.Session() as session:
-            match_data: MatchDataSchema = await read_data.read_match_data(
-                self.match_id, session
-            )
             latest_state_data: StateSchema = await read_data.read_latest_state_data(self.match_id, session)
+            if latest_state_data.end_number == 0 and latest_state_data.total_shot_number == 0 and self.match_team_name == "team0":
+                await update_data.update_created_at_state_data(
+                    latest_state_data.state_id, session
+                )
             state_data_in_end: List[StateSchema] = await read_data.read_state_data_in_end(
                 self.match_id, latest_state_data.end_number, session
             )
-        for state in state_data_in_end:
+        for i in range(len(state_data_in_end)):
             state_data: StateModel = (
                 data_converter.convert_stateschema_to_statemodel(
-                    match_data, state
+                    match_data, state_data_in_end[i]
                 )
             )
             payload = json.dumps(state_data.model_dump())
             logging.debug(f"Payload: {payload}")
-            sse_message = f"event: state_update\ndata: {payload}\n\n"
-            yield sse_message
+            if i == len(state_data_in_end) - 1:
+                sse_message = (
+                    f"event: latest_state_update\ndata: {payload}\n\n"
+                )
+                yield sse_message
+            else:
+                sse_message = f"event: state_update\ndata: {payload}\n\n"
+                yield sse_message
 
         await pubsub.subscribe(channel)
         try:
@@ -67,7 +89,7 @@ class RedisSubscriber:
                     payload = json.dumps(latest_state_data.model_dump())
 
                     sse_message = (
-                        f"event: state_update\ndata: {payload}\n\n"
+                        f"event: latest_state_update\ndata: {payload}\n\n"
                     )
                     yield sse_message
 

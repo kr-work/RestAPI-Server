@@ -63,8 +63,8 @@ class DataConverter:
             shot_number = state_data.shot_number,
             total_shot_number = state_data.total_shot_number,
             next_shot_team = next_shot_team,
-            first_team_remaining_time = state_data.first_team_extra_end_remaining_time,
-            second_team_remaining_time = state_data.second_team_extra_end_remaining_time,
+            first_team_remaining_time = state_data.first_team_remaining_time,
+            second_team_remaining_time = state_data.second_team_remaining_time,
             first_team_extra_end_remaining_time = state_data.first_team_extra_end_remaining_time,
             second_team_extra_end_remaining_time = state_data.second_team_extra_end_remaining_time,
             stone_coordinate = StoneCoordinateModel(

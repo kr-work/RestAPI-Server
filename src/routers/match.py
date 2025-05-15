@@ -411,8 +411,11 @@ class DCServer:
     async def stream_state_info(
         match_id: UUID, user_data: UserModel = Depends(basic_auth.check_user_data)
     ):
+        match_team_name = await basic_auth.check_match_data(
+            user_data, match_id
+        )
         channel = f"match:{match_id}"
-        redis_subscriber = RedisSubscriber(Session, match_id)
+        redis_subscriber = RedisSubscriber(Session, match_id, match_team_name)
 
         return StreamingResponse(
             redis_subscriber.event_generator(channel, redis),
