@@ -34,6 +34,7 @@ class CreateAuthentication:
 
         Args:
             user (UserModel): username and password which
+            session (AsyncSession): session to connect to the database
         """
         await CreateAuthentication.create_table()
         salt = secrets.token_hex(8)
@@ -54,6 +55,14 @@ class CreateAuthentication:
     async def create_match_data(
         user_data: UserModel, match_id: UUID, match_team_name: str, session: AsyncSession
     ) -> None:
+        """Create match data to authenticate the user
+
+        Args:
+            user_data (UserModel): username and password to authenticate the user
+            match_id (UUID): To identify the match
+            match_team_name (str): team0 or team1
+            session (AsyncSession): session to connect to the database
+        """        
         try:
             match_auth = MatchAuthentication(
                 username=user_data.username,
@@ -78,6 +87,7 @@ class ReadAuthentication:
 
         Args:
             username (str): username of the user
+            session (AsyncSession): session to connect to the database
 
         Returns:
             UserModel: username, password and salt
@@ -107,6 +117,7 @@ class ReadAuthentication:
         Args:
             user_data (UserModel): username and password to authenticate the user
             match_id (UUID): To identify the match
+            session (AsyncSession): session to connect to the database
 
         Returns:
             MatchAuthenticationModel: match team name and match id
@@ -137,6 +148,7 @@ class DeleteAuthentication:
         Args:
             username (str): username of the user
             match_id (UUID): match id to delete
+            session (AsyncSession): session to connect to the database
         """
         try:
             stmt = select(MatchAuthentication).where(
@@ -156,7 +168,12 @@ class DeleteAuthentication:
 
     @staticmethod
     async def delete_expired_match_data(session: AsyncSession):
-        """Delete expired match data"""
+        """Delete expired match data
+        
+        Args:
+            session (AsyncSession): session to connect to the database
+        """
+
         try:
             stmt = select(MatchAuthentication).where(
                 MatchAuthentication.expired_at < datetime.now()

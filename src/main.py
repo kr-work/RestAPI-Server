@@ -2,7 +2,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import logging
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from src.authentication.basic_authentication import BasicAuthentication
 from src.crud import CreateData
@@ -26,10 +26,7 @@ create_data = CreateData()
 async def lifespan(app):
     """Create default player data to use learning AI.
     This function is called to start the server.
-
-    Args:
-        app (_type_): FastAPI app
-    """    
+    """
     first_player = PlayerSchema(
         player_id="006951d4-37b2-48eb-85a2-af9463a1e7aa",
         team_id="5050f20f-cf97-4fb1-bbc1-f2c9052e0d17",
@@ -45,8 +42,7 @@ async def lifespan(app):
         player_name="second",
     )
     simulator = PhysicalSimulatorSchema(
-        physical_simulator_id=uuid4(),
-        simulator_name="fcv1"
+        physical_simulator_id=uuid4(), simulator_name="fcv1"
     )
     async with Session() as session:
         await create_data.create_default_player_data(first_player, session)

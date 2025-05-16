@@ -14,11 +14,7 @@ from redis.asyncio import Redis
 from src.crud import CreateData, ReadData, UpdateData
 from src.models.dc_models import (
     ClientDataModel,
-    CoordinateDataModel,
-    ScoreModel,
     ShotInfoModel,
-    StateModel,
-    StoneCoordinateModel,
     TeamModel,
     MatchNameModel,
 )
@@ -30,9 +26,7 @@ from src.models.schema_models import (
     ShotInfoSchema,
     StateSchema,
     StoneCoordinateSchema,
-    TeamSchema,
     TournamentSchema,
-    TrajectorySchema,
 )
 from src.models.basic_authentication_models import UserModel
 from src.create_postgres_engine import engine
@@ -227,7 +221,8 @@ class BaseServer:
                 detail="Simulator not found.",
             )
 
-        team_score: List = [0] * client_data.standard_end_count
+        # Add one score index for when the game goes into overtime
+        team_score: List = [0] * (client_data.standard_end_count + 1)
 
         stone_coordinates_data = {
             "team0": [
@@ -453,6 +448,9 @@ class DCServer:
             user_data (UserModel): The user data for authentication
         """
         end_time: datetime = datetime.now()
+        match_data: MatchDataSchema = None
+        pre_state_data: StateSchema = None
+        player_data: PlayerSchema = None
 
         async with Session() as session:
             # Get match data to know simulator and team_id
@@ -463,235 +461,245 @@ class DCServer:
             pre_state_data: StateSchema = await read_data.read_latest_state_data(
                 match_id, session
             )
-            # Get match team name to know which team is sending the shot information
-            match_team_name: str = await basic_auth.check_match_data(
-                user_data, match_id
+        # Get match team name to know which team is sending the shot information
+        match_team_name: str = await basic_auth.check_match_data(
+            user_data, match_id
+        )
+        shot_team_name: str = (
+            "team0"
+            if pre_state_data.next_shot_team_id == match_data.first_team_id
+            else "team1"
+        )
+        # Check if shot info which client sent is valid or not
+        if shot_team_name != match_team_name:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Not your turn.",
             )
-            shot_team_name: str = (
-                "team0"
-                if pre_state_data.next_shot_team_id == match_data.first_team_id
-                else "team1"
-            )
-            # Check if shot info which client sent is valid or not
-            if shot_team_name != match_team_name:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="Not your turn.",
-                )
 
-            winner_team_id: UUID = None
-            next_shot_team_id: UUID = None
-            player_id: UUID = None
-            # shot team which send this "shot_info"
-            shot_team_id: UUID = pre_state_data.next_shot_team_id
-            # total shot number at this time
-            end_number: int = pre_state_data.end_number
-            total_shot_number: int = pre_state_data.total_shot_number
-            shot_per_team: int = total_shot_number // 2
-            player_number: int = int(total_shot_number / 4) + 1
-            team_number: int = 0 if match_team_name == "team0" else 1
-            next_end_first_shot_team_id: UUID = None
+        winner_team_id: UUID = None
+        next_shot_team_id: UUID = None
+        player_id: UUID = None
+        # shot team which send this "shot_info"
+        shot_team_id: UUID = pre_state_data.next_shot_team_id
+        # total shot number at this time
+        end_number: int = pre_state_data.end_number
+        total_shot_number: int = pre_state_data.total_shot_number
+        shot_per_team: int = total_shot_number // 2
+        player_number: int = int(total_shot_number / 4) + 1
+        team_number: int = 0 if match_team_name == "team0" else 1
+        next_end_first_shot_team_id: UUID = None
 
-            if match_team_name == "team0":
-                player_id = getattr(match_data, f"first_team_player{player_number}_id")
-            elif match_team_name == "team1":
-                player_id = getattr(match_data, f"second_team_player{player_number}_id")
+        if match_team_name == "team0":
+            player_id = getattr(match_data, f"first_team_player{player_number}_id")
+        elif match_team_name == "team1":
+            player_id = getattr(match_data, f"second_team_player{player_number}_id")
 
+        async with Session() as session:
             player_data: PlayerSchema = await read_data.read_player_data(
                 player_id, session
             )
-            dist_translation_velocity = np.max(
-                [
-                    np.min([shot_info.translation_velocity, player_data.max_velocity])
-                    + np.random.normal(loc=0.0, scale=player_data.shot_dispersion_rate),
-                    0.0,
-                ]
-            )
+        dist_translation_velocity = np.max(
+            [
+                np.min([shot_info.translation_velocity, player_data.max_velocity])
+                + np.random.normal(loc=0.0, scale=player_data.shot_dispersion_rate),
+                0.0,
+            ]
+        )
 
-            dist_shot_info: ShotInfoModel = shot_info
-            dist_shot_info.translation_velocity = dist_translation_velocity
+        dist_shot_info: ShotInfoModel = shot_info
+        dist_shot_info.translation_velocity = dist_translation_velocity
 
-            # Calculate the time difference between the last state and this shot
-            # and update the remaining time
-            pre_end_time: datetime = pre_state_data.created_at
-            time_diff: timedelta = end_time - pre_end_time
-            time_diff_seconds: float = time_diff.total_seconds()
-            logging.info(f"time_diff_seconds: {time_diff_seconds}")
+        # Calculate the time difference between the last state and this shot
+        # and update the remaining time
+        pre_end_time: datetime = pre_state_data.created_at
+        time_diff: timedelta = end_time - pre_end_time
+        time_diff_seconds: float = time_diff.total_seconds()
 
-            team0_remaining_time: float = pre_state_data.first_team_remaining_time
-            team1_remaining_time: float = pre_state_data.second_team_remaining_time
-            team0_extra_end_remaining_time: float = (
-                pre_state_data.first_team_extra_end_remaining_time
-            )
-            team1_extra_end_remaining_time: float = (
-                pre_state_data.second_team_extra_end_remaining_time
-            )
+        team0_remaining_time: float = pre_state_data.first_team_remaining_time
+        team1_remaining_time: float = pre_state_data.second_team_remaining_time
+        team0_extra_end_remaining_time: float = (
+            pre_state_data.first_team_extra_end_remaining_time
+        )
+        team1_extra_end_remaining_time: float = (
+            pre_state_data.second_team_extra_end_remaining_time
+        )
 
-            if pre_state_data.end_number < match_data.standard_end_count:
-                if match_team_name == "team0":
-                    team0_remaining_time -= time_diff_seconds
-                    if team0_remaining_time < 0:
-                        winner_team_id = match_data.second_team_id
-                        team0_remaining_time = 0
-                elif match_team_name == "team1":
-                    team1_remaining_time -= time_diff_seconds
-                    if team1_remaining_time < 0:
-                        winner_team_id = match_data.first_team_id
-                        team1_remaining_time = 0
-            else:
-                if match_team_name == "team0":
-                    team0_extra_end_remaining_time -= time_diff_seconds
-                    if team0_extra_end_remaining_time < 0:
-                        winner_team_id = match_data.second_team_id
-                        team0_extra_end_remaining_time = 0
-                elif match_team_name == "team1":
-                    team1_extra_end_remaining_time -= time_diff_seconds
-                    if team1_extra_end_remaining_time < 0:
-                        winner_team_id = match_data.first_team_id
-                        team1_extra_end_remaining_time = 0
+        if pre_state_data.end_number < match_data.standard_end_count:
+            if match_team_name == "team0":
+                team0_remaining_time -= time_diff_seconds
+                if team0_remaining_time < 0:
+                    winner_team_id = match_data.second_team_id
+                    team0_remaining_time = 0
+            elif match_team_name == "team1":
+                team1_remaining_time -= time_diff_seconds
+                if team1_remaining_time < 0:
+                    winner_team_id = match_data.first_team_id
+                    team1_remaining_time = 0
+        else:
+            if match_team_name == "team0":
+                team0_extra_end_remaining_time -= time_diff_seconds
+                if team0_extra_end_remaining_time < 0:
+                    winner_team_id = match_data.second_team_id
+                    team0_extra_end_remaining_time = 0
+            elif match_team_name == "team1":
+                team1_extra_end_remaining_time -= time_diff_seconds
+                if team1_extra_end_remaining_time < 0:
+                    winner_team_id = match_data.first_team_id
+                    team1_extra_end_remaining_time = 0
 
-            # Simulate the stone
-            simulated_stones_coordinate, trajectory = simulate_fcv1(
-                dist_shot_info,
-                pre_state_data,
-                total_shot_number,
-                shot_per_team,
-                team_number,
-            )
+        # Simulate the stone
+        simulated_stones_coordinate, trajectory = simulate_fcv1(
+            dist_shot_info,
+            pre_state_data,
+            total_shot_number,
+            shot_per_team,
+            team_number,
+        )
 
-            # Update the total shot number and shot per team
-            total_shot_number += 1
-            shot_per_team = total_shot_number // 2
+        # Update the total shot number and shot per team
+        total_shot_number += 1
+        shot_per_team = total_shot_number // 2
 
-            next_shot_team_id = (
-                match_data.first_team_id
-                if shot_team_id == match_data.second_team_id
-                else match_data.second_team_id
-            )
+        next_shot_team_id = (
+            match_data.first_team_id
+            if shot_team_id == match_data.second_team_id
+            else match_data.second_team_id
+        )
 
-            shot_info_data: ShotInfoSchema = ShotInfoSchema(
-                shot_id=uuid7(),
-                player_id=player_id,
-                team_id=shot_team_id,
-                trajectory_id=uuid7(),
-                pre_shot_state_id=pre_state_data.state_id,
-                post_shot_state_id=uuid7(),
-                actual_translation_velocity=shot_info.translation_velocity,
-                translation_velocity=dist_translation_velocity,
-                angular_velocity_sign=shot_info.angular_velocity_sign,
-                angular_velocity=shot_info.angular_velocity,
-                shot_angle=shot_info.shot_angle,
-            )
+        shot_info_data: ShotInfoSchema = ShotInfoSchema(
+            shot_id=uuid7(),
+            player_id=player_id,
+            team_id=shot_team_id,
+            trajectory_id=uuid7(),
+            pre_shot_state_id=pre_state_data.state_id,
+            post_shot_state_id=uuid7(),
+            actual_translation_velocity=shot_info.translation_velocity,
+            translation_velocity=dist_translation_velocity,
+            angular_velocity_sign=shot_info.angular_velocity_sign,
+            angular_velocity=shot_info.angular_velocity,
+            shot_angle=shot_info.shot_angle,
+        )
 
-            stone_coordinate = {
-                "team0": [
-                    {
-                        "x": simulated_stones_coordinate[0][i][0],
-                        "y": simulated_stones_coordinate[0][i][1],
-                    }
-                    for i in range(8)
-                ],
-                "team1": [
-                    {
-                        "x": simulated_stones_coordinate[1][i][0],
-                        "y": simulated_stones_coordinate[1][i][1],
-                    }
-                    for i in range(8)
-                ],
-            }
-            stone_coordinate_data: StoneCoordinateSchema = StoneCoordinateSchema(
-                stone_coordinate_id=uuid7(),
-                stone_coordinate_data=json.dumps(stone_coordinate),
-            )
+        stone_coordinate = {
+            "team0": [
+                {
+                    "x": simulated_stones_coordinate[0][i][0],
+                    "y": simulated_stones_coordinate[0][i][1],
+                }
+                for i in range(8)
+            ],
+            "team1": [
+                {
+                    "x": simulated_stones_coordinate[1][i][0],
+                    "y": simulated_stones_coordinate[1][i][1],
+                }
+                for i in range(8)
+            ],
+        }
+        stone_coordinate_data: StoneCoordinateSchema = StoneCoordinateSchema(
+            stone_coordinate_id=uuid7(),
+            stone_coordinate_data=json.dumps(stone_coordinate),
+        )
 
-            if total_shot_number == 16:
-                next_shot_team_id = None
-                pre_score_data: ScoreSchema = pre_state_data.score
-                team0_score: List = pre_score_data.team0_score
-                team1_score: List = pre_score_data.team1_score
+        # The shot is the last shot of the "end"
+        if total_shot_number == 16:
+            next_shot_team_id: UUID = None
+            pre_score_data: ScoreSchema = pre_state_data.score
+            team0_score: List = pre_score_data.team0_score
+            team1_score: List = pre_score_data.team1_score
 
-                team0_stones_position = [
-                    (stone[0], stone[1]) for stone in simulated_stones_coordinate[0]
-                ]
-                team1_stones_position = [
-                    (stone[0], stone[1]) for stone in simulated_stones_coordinate[1]
-                ]
-                distance_list: List = []
-                for i in range(8):
-                    distance_list.append(
-                        score_utils.get_distance(
-                            0, team0_stones_position[i][0], team0_stones_position[i][1]
-                        )
+            team0_stones_position = [
+                (stone[0], stone[1]) for stone in simulated_stones_coordinate[0]
+            ]
+            team1_stones_position = [
+                (stone[0], stone[1]) for stone in simulated_stones_coordinate[1]
+            ]
+            distance_list: List = []
+            for i in range(8):
+                distance_list.append(
+                    score_utils.get_distance(
+                        0, team0_stones_position[i][0], team0_stones_position[i][1]
                     )
-                    distance_list.append(
-                        score_utils.get_distance(
-                            1, team1_stones_position[i][0], team1_stones_position[i][1]
-                        )
-                    )
-                scored_team, score = score_utils.get_score(distance_list)
-                if scored_team is None:
-                    next_end_first_shot_team_id = (
-                        match_data.first_team_id
-                        if match_team_name == "team1"
-                        else match_data.second_team_id
-                    )
-
-                if end_number < match_data.standard_end_count:
-                    if scored_team == 0:
-                        team0_score[end_number] = score
-                        team1_score[end_number] = 0
-                        next_end_first_shot_team_id = match_data.second_team_id
-                    elif scored_team == 1:
-                        team0_score[end_number] = 0
-                        team1_score[end_number] = score
-                        next_end_first_shot_team_id = match_data.first_team_id
-                elif end_number >= match_data.standard_end_count:
-                    if scored_team == 0:
-                        team0_score[match_data.standard_end_count] = score
-                        team1_score[match_data.standard_end_count] = score
-
-                score_data: ScoreSchema = ScoreSchema(
-                    score_id=pre_score_data.score_id,
-                    team0_score=team0_score,
-                    team1_score=team1_score,
                 )
+                distance_list.append(
+                    score_utils.get_distance(
+                        1, team1_stones_position[i][0], team1_stones_position[i][1]
+                    )
+                )
+            scored_team, score = score_utils.get_score(distance_list)
+            if scored_team is None:
+                next_end_first_shot_team_id = (
+                    match_data.first_team_id
+                    if match_team_name == "team1"
+                    else match_data.second_team_id
+                )
+
+            if end_number < match_data.standard_end_count:
+                if scored_team == 0:
+                    team0_score[end_number] = score
+                    team1_score[end_number] = 0
+                    next_end_first_shot_team_id = match_data.second_team_id
+                elif scored_team == 1:
+                    team0_score[end_number] = 0
+                    team1_score[end_number] = score
+                    next_end_first_shot_team_id = match_data.first_team_id
+            elif end_number >= match_data.standard_end_count:
+                if scored_team == 0:
+                    team0_score[match_data.standard_end_count] = score
+                    team1_score[match_data.standard_end_count] = 0
+                    next_end_first_shot_team_id = None
+                    winner_team_id = match_data.first_team_id
+                elif scored_team == 1:
+                    team0_score[match_data.standard_end_count] = 0
+                    team1_score[match_data.standard_end_count] = score
+                    winner_team_id = match_data.second_team_id
+                    next_end_first_shot_team_id = None
+
+            score_data: ScoreSchema = ScoreSchema(
+                score_id=pre_score_data.score_id,
+                team0_score=team0_score,
+                team1_score=team1_score,
+            )
+            async with Session() as session:
                 await update_data.update_score(score_data, session)
 
-                if end_number >= match_data.standard_end_count - 1:
-                    team0_total_score: int = score_utils.calculate_score(team0_score)
-                    team1_total_score: int = score_utils.calculate_score(team1_score)
-                    if team0_total_score > team1_total_score:
-                        next_end_first_shot_team_id = None
-                        winner_team_id = match_data.first_team_id
-                    elif team0_total_score < team1_total_score:
-                        next_end_first_shot_team_id = None
-                        winner_team_id = match_data.second_team_id
-                    else:
-                        winner_team_id = None
+            if end_number >= match_data.standard_end_count - 1:
+                team0_total_score: int = score_utils.calculate_score(team0_score)
+                team1_total_score: int = score_utils.calculate_score(team1_score)
+                if team0_total_score > team1_total_score:
+                    next_end_first_shot_team_id = None
+                    winner_team_id = match_data.first_team_id
+                elif team0_total_score < team1_total_score:
+                    next_end_first_shot_team_id = None
+                    winner_team_id = match_data.second_team_id
+                else:
+                    winner_team_id = None
 
-            state_data: StateSchema = StateSchema(
-                state_id=shot_info_data.post_shot_state_id,
-                winner_team_id=winner_team_id,
-                match_id=match_id,
-                end_number=pre_state_data.end_number,
-                shot_number=shot_per_team,
-                total_shot_number=total_shot_number,
-                first_team_remaining_time=team0_remaining_time,
-                second_team_remaining_time=team1_remaining_time,
-                first_team_extra_end_remaining_time=team0_extra_end_remaining_time,
-                second_team_extra_end_remaining_time=team1_extra_end_remaining_time,
-                stone_coordinate_id=stone_coordinate_data.stone_coordinate_id,
-                score_id=pre_state_data.score_id,
-                shot_id=shot_info_data.shot_id,
-                next_shot_team_id=next_shot_team_id,
-                created_at=datetime.now(),
-                stone_coordinate=stone_coordinate_data,
-            )
+        state_data: StateSchema = StateSchema(
+            state_id=shot_info_data.post_shot_state_id,
+            winner_team_id=winner_team_id,
+            match_id=match_id,
+            end_number=pre_state_data.end_number,
+            shot_number=shot_per_team,
+            total_shot_number=total_shot_number,
+            first_team_remaining_time=team0_remaining_time,
+            second_team_remaining_time=team1_remaining_time,
+            first_team_extra_end_remaining_time=team0_extra_end_remaining_time,
+            second_team_extra_end_remaining_time=team1_extra_end_remaining_time,
+            stone_coordinate_id=stone_coordinate_data.stone_coordinate_id,
+            score_id=pre_state_data.score_id,
+            shot_id=shot_info_data.shot_id,
+            next_shot_team_id=next_shot_team_id,
+            created_at=datetime.now(),
+            stone_coordinate=stone_coordinate_data,
+        )
+        async with Session() as session:
             await create_data.create_shot_info_data(shot_info_data, session)
             await create_data.create_state_data(state_data, session)
 
-            channel = f"match:{match_id}"
-            await redis.publish(channel, str(match_id))
+        channel = f"match:{match_id}"
+        await redis.publish(channel, str(match_id))
 
-            if total_shot_number == 16 and winner_team_id is None:
-                await state_end_number_update(state_data, next_end_first_shot_team_id)
+        if total_shot_number == 16 and winner_team_id is None:
+            await state_end_number_update(state_data, next_end_first_shot_team_id)

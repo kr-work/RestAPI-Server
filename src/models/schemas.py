@@ -41,74 +41,74 @@ class Match(Base):
         "State",
         primaryjoin="foreign(Match.match_id) == State.match_id",
         back_populates="match",
-        cascade="all, delete"
+        cascade="all, delete",
     )
     first_team_player1 = relationship(
         "Player",
         primaryjoin="foreign(Match.first_team_player1_id) == Player.player_id",
         back_populates="first_player1",
-        cascade="all, delete"
+        cascade="all, delete",
     )
     first_team_player2 = relationship(
         "Player",
         primaryjoin="foreign(Match.first_team_player2_id) == Player.player_id",
         back_populates="first_player2",
-        cascade="all, delete"
+        cascade="all, delete",
     )
     first_team_player3 = relationship(
         "Player",
         primaryjoin="foreign(Match.first_team_player3_id) == Player.player_id",
         back_populates="first_player3",
-        cascade="all, delete"
+        cascade="all, delete",
     )
     first_team_player4 = relationship(
         "Player",
         primaryjoin="foreign(Match.first_team_player4_id) == Player.player_id",
         back_populates="first_player4",
-        cascade="all, delete"
+        cascade="all, delete",
     )
     second_team_player1 = relationship(
         "Player",
         primaryjoin="foreign(Match.second_team_player1_id) == Player.player_id",
         back_populates="second_player1",
-        cascade="all, delete"
+        cascade="all, delete",
     )
     second_team_player2 = relationship(
         "Player",
         primaryjoin="foreign(Match.second_team_player2_id) == Player.player_id",
         back_populates="second_player2",
-        cascade="all, delete"
+        cascade="all, delete",
     )
     second_team_player3 = relationship(
         "Player",
         primaryjoin="foreign(Match.second_team_player3_id) == Player.player_id",
         back_populates="second_player3",
-        cascade="all, delete"
+        cascade="all, delete",
     )
     second_team_player4 = relationship(
         "Player",
         primaryjoin="foreign(Match.second_team_player4_id) == Player.player_id",
         back_populates="second_player4",
-        cascade="all, delete"
+        cascade="all, delete",
     )
     score = relationship(
         "Score",
         primaryjoin="foreign(Match.score_id) == Score.score_id",
         back_populates="match",
         cascade="all, delete",
-        uselist=False  # 一対一のリレーション
+        uselist=False,  # 一対一のリレーション
     )
     simulator = relationship(
         "PhysicalSimulator",
         primaryjoin="foreign(Match.physical_simulator_id) == PhysicalSimulator.physical_simulator_id",
         back_populates="match",
-        cascade="all, delete"
+        cascade="all, delete",
     )
     tournament = relationship(
         "Tournament",
         primaryjoin="foreign(Match.tournament_id) == Tournament.tournament_id",
         back_populates="match",
-        cascade="all, delete"
+        cascade="all, delete",
     )
 
 
@@ -123,7 +123,7 @@ class Score(Base):
         primaryjoin="Score.score_id == foreign(Match.score_id)",
         back_populates="score",
         cascade="all, delete",
-        uselist=False
+        uselist=False,
     )
     state = relationship(
         "State",
@@ -142,7 +142,7 @@ class PhysicalSimulator(Base):
         "Match",
         primaryjoin="PhysicalSimulator.physical_simulator_id == foreign(Match.physical_simulator_id)",
         back_populates="simulator",
-        cascade="all, delete"
+        cascade="all, delete",
     )
 
 
@@ -155,7 +155,7 @@ class Tournament(Base):
         "Match",
         primaryjoin="Tournament.tournament_id == foreign(Match.tournament_id)",
         back_populates="tournament",
-        cascade="all, delete"
+        cascade="all, delete",
     )
 
 
@@ -177,19 +177,19 @@ class ShotInfo(Base):
         "State",
         primaryjoin="ShotInfo.shot_id == foreign(State.shot_id)",
         back_populates="shot_info",
-        cascade="all, delete"
+        cascade="all, delete",
     )
     pre_shot_state = relationship(
         "State",
         primaryjoin="foreign(ShotInfo.pre_shot_state_id) == State.state_id",
         back_populates="pre_shot_info",
-        cascade="all, delete"
+        cascade="all, delete",
     )
     post_shot_state = relationship(
         "State",
         primaryjoin="foreign(ShotInfo.post_shot_state_id) == State.state_id",
         back_populates="post_shot_info",
-        cascade="all, delete"
+        cascade="all, delete",
     )
 
 
@@ -215,37 +215,37 @@ class State(Base):
         "Match",
         primaryjoin="State.match_id == foreign(Match.match_id)",
         back_populates="state",
-        cascade="all, delete"
+        cascade="all, delete",
     )
     score = relationship(
         "Score",
         primaryjoin="foreign(State.score_id) == Score.score_id",
         back_populates="state",
-        cascade="all, delete"
+        cascade="all, delete",
     )
     shot_info = relationship(
         "ShotInfo",
         primaryjoin="foreign(State.shot_id) == ShotInfo.shot_id",
         back_populates="state",
-        cascade="all, delete"
+        cascade="all, delete",
     )
     stone_coordinate = relationship(
         "StoneCoordinate",
         primaryjoin="foreign(State.stone_coordinate_id) == StoneCoordinate.stone_coordinate_id",
         back_populates="state",
-        cascade="all, delete"
+        cascade="all, delete",
     )
     pre_shot_info = relationship(
         "ShotInfo",
         primaryjoin="State.state_id == foreign(ShotInfo.pre_shot_state_id)",
         back_populates="pre_shot_state",
-        cascade="all, delete"
+        cascade="all, delete",
     )
     post_shot_info = relationship(
         "ShotInfo",
         primaryjoin="State.state_id == foreign(ShotInfo.post_shot_state_id)",
         back_populates="post_shot_state",
-        cascade="all, delete"
+        cascade="all, delete",
     )
 
 
@@ -258,7 +258,7 @@ class StoneCoordinate(Base):
         "State",
         primaryjoin="StoneCoordinate.stone_coordinate_id == foreign(State.stone_coordinate_id)",
         back_populates="stone_coordinate",
-        cascade="all, delete"
+        cascade="all, delete",
     )
 
 
@@ -281,47 +281,47 @@ class Player(Base):
         "Match",
         primaryjoin="Player.player_id == foreign(Match.first_team_player1_id)",
         back_populates="first_team_player1",
-        cascade="all, delete"
+        cascade="all, delete",
     )
     first_player2 = relationship(
         "Match",
         primaryjoin="Player.player_id == foreign(Match.first_team_player2_id)",
         back_populates="first_team_player2",
-        cascade="all, delete"
+        cascade="all, delete",
     )
     first_player3 = relationship(
         "Match",
         primaryjoin="Player.player_id == foreign(Match.first_team_player3_id)",
         back_populates="first_team_player3",
-        cascade="all, delete"
+        cascade="all, delete",
     )
     first_player4 = relationship(
         "Match",
         primaryjoin="Player.player_id == foreign(Match.first_team_player4_id)",
         back_populates="first_team_player4",
-        cascade="all, delete"
+        cascade="all, delete",
     )
     second_player1 = relationship(
         "Match",
         primaryjoin="Player.player_id == foreign(Match.second_team_player1_id)",
         back_populates="second_team_player1",
-        cascade="all, delete"
+        cascade="all, delete",
     )
     second_player2 = relationship(
         "Match",
         primaryjoin="Player.player_id == foreign(Match.second_team_player2_id)",
         back_populates="second_team_player2",
-        cascade="all, delete"
+        cascade="all, delete",
     )
     second_player3 = relationship(
         "Match",
         primaryjoin="Player.player_id == foreign(Match.second_team_player3_id)",
         back_populates="second_team_player3",
-        cascade="all, delete"
+        cascade="all, delete",
     )
     second_player4 = relationship(
         "Match",
         primaryjoin="Player.player_id == foreign(Match.second_team_player4_id)",
         back_populates="second_team_player4",
-        cascade="all, delete"
+        cascade="all, delete",
     )

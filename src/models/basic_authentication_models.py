@@ -1,9 +1,8 @@
-from datetime import datetime
 from pydantic import BaseModel
-from uuid import UUID
 
 
 class UserModel(BaseModel):
+    """This class is used to create a user model for basic authentication."""
     username: str
     hash_password: str
     salt: str

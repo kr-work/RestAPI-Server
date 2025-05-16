@@ -6,27 +6,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 from sqlalchemy.orm import joinedload
 from typing import List
-from uuid import uuid4
 
 from src.models.schema_models import (
     MatchDataSchema,
     ScoreSchema,
     StateSchema,
     StoneCoordinateSchema,
-    TrajectorySchema,
     TournamentSchema,
     PhysicalSimulatorSchema,
     PlayerSchema,
-    TeamSchema,
     ShotInfoSchema,
 )
 from src.models.schemas import (
-    Base,
     Match,
     Score,
     State,
     StoneCoordinate,
-    Trajectory,
     Tournament,
     PhysicalSimulator,
     Player,
@@ -40,6 +35,17 @@ class UpdateData:
     async def update_match_data_with_team_name(
         match_id, session: AsyncSession, team_name: str, match_team_name: str
     ) -> str | None:
+        """Update match table with team name
+
+        Args:
+            match_id (_type_): To identify the match
+            session (AsyncSession): AsyncSession object to interact with database
+            team_name (str): client team name
+            match_team_name (str): To identify the team name in match table, "team0" or "team1"
+
+        Returns:
+            str | None: _description_
+        """
         try:
             stmt = select(Match).where(Match.match_id == match_id).with_for_update()
             result = await session.execute(stmt)
@@ -84,6 +90,8 @@ class UpdateData:
 
         Args:
             match_id (UUID): To identify the match
+            session (AsyncSession): AsyncSession object to interact with database
+            player_id_list (List[UUID]): List of player ids
             first_team (TeamSchema): First attack at the first end
         """
         try:
@@ -115,6 +123,8 @@ class UpdateData:
 
         Args:
             match_id (UUID): To identify the match
+            session (AsyncSession): AsyncSession object to interact with database
+            player_id_list (List[UUID]): List of player ids
             second_team (TeamSchema): Second attack at the first end
         """
         try:
@@ -135,44 +145,15 @@ class UpdateData:
             await session.rollback()
             logging.error(f"Failed to update second team data: {e}")
 
-    # @staticmethod
-    # async def update_winner_and_next_shot_team(
-    #     state_id: UUID, session: AsyncSession, winner_team_id: UUID
-    # ):
-    #     """Update state table with winner team and next shot team
-
-    #     Args:
-    #         state_id (UUID): To identify the state
-    #         winner_team (UUID): Winner team of the game
-    #     """
-    #     try:
-    #         stmt = select(State).where(State.state_id == state_id)
-    #         result = await session.execute(stmt)
-    #         result = result.scalars().first()
-
-    #         if result is None:
-    #             return False
-
-    #         result.winner_team_id = winner_team_id
-    #         result.next_shot_team_id = None
-    #         await session.commit()
-    #     except Exception as e:
-    #         await session.rollback()
-    #         logging.error(f"Failed to update winner team data: {e}")
-
     @staticmethod
-    async def update_created_at_state_data(
-        state_id: UUID, session: AsyncSession):
+    async def update_created_at_state_data(state_id: UUID, session: AsyncSession):
         """Update state table with created_at data
         Args:
             state_id (UUID): To identify the state
             session (AsyncSession): AsyncSession object to interact with database
         """
         try:
-            stmt = (
-                select(State)
-                .where(State.state_id == state_id)
-            )
+            stmt = select(State).where(State.state_id == state_id)
             result = await session.execute(stmt)
             result = result.scalars().first()
             if result is None:
@@ -218,7 +199,7 @@ class UpdateData:
         """Update score table with new score
 
         Args:
-            score (ScoreSchema): New score data
+            score (ScoreSchema): Score data which is updated at [end_number]
             session (AsyncSession): AsyncSession object to interact with database
         """
         try:
@@ -236,9 +217,12 @@ class UpdateData:
             await session.rollback()
             logging.error(f"Failed to update score data: {e}")
 
+
 class ReadData:
     @staticmethod
-    async def read_match_data(match_id: UUID, session: AsyncSession) -> MatchDataSchema | None:
+    async def read_match_data(
+        match_id: UUID, session: AsyncSession
+    ) -> MatchDataSchema | None:
         """Read match data and score, tournament, simulator data from database
 
         Args:
@@ -393,11 +377,22 @@ class ReadData:
             result = result.scalars().all()
 
             if result is None:
-                return None
+                return []
 
-            state_data_list = [
-                StateSchema.model_validate(state) for state in result
-            ]
+            state_data_list: List[StateSchema] = []
+            for state in result:
+                if state.stone_coordinate and isinstance(
+                    state.stone_coordinate.stone_coordinate_data, dict
+                ):
+                    state.stone_coordinate.stone_coordinate_data = json.dumps(
+                        state.stone_coordinate.stone_coordinate_data
+                    )
+
+                state_data_list.append(
+                    StateSchema.model_validate(state)
+                )
+
+            # state_data_list = [StateSchema.model_validate(state) for state in result]
             return state_data_list
 
         except Exception as e:
@@ -441,6 +436,7 @@ class ReadData:
 
         Args:
             score_id (UUID): To identify the score data
+            session (AsyncSession): AsyncSession object to interact with database
 
         Returns:
             ScoreSchema: Score data with first team score and second team score
@@ -467,6 +463,8 @@ class ReadData:
         """Read team id data from database
         Args:
             team_name (str): To identify the team name
+            session (AsyncSession): AsyncSession object to interact with database
+
         Returns:
             UUID: Team id
         """
@@ -477,12 +475,17 @@ class ReadData:
                     (Match.first_team_name == team_name)
                     | (Match.second_team_name == team_name)
                 )
+                .options(
+                    joinedload(Match.score),
+                    joinedload(Match.tournament),
+                    joinedload(Match.simulator),
+                )
                 .order_by(desc(Match.created_at))
                 .limit(1)
             )
             result = await session.execute(stmt)
             result = result.scalars().first()
-            match_data = MatchDataSchema.model_validate(result[0])
+            match_data = MatchDataSchema.model_validate(result)
             if result is None:
                 return None
 
@@ -505,6 +508,7 @@ class ReadData:
         Args:
             player_name (str): To identify the player name
             team_id (UUID): To identify the team id
+            session (AsyncSession): AsyncSession object to interact with database
 
         Returns:
             UUID: Player id
@@ -529,6 +533,7 @@ class ReadData:
 
         Args:
             player_id (UUID): To identify the player
+            session (AsyncSession): AsyncSession object to interact with database
 
         Returns:
             PlayerSchema: Player data with player name, team id, max velocity, shot dispersion rate
@@ -554,6 +559,7 @@ class ReadData:
 
         Args:
             match_id (UUID): To identify the match
+            session (AsyncSession): AsyncSession object to interact with database
 
         Returns:
             str: Simulator name
@@ -651,6 +657,7 @@ class CreateData:
 
         Args:
             state (StateSchema): State data with stone coordinate data
+            session (AsyncSession): AsyncSession object to interact with database
         """
         try:
             new_stone_coordinate = StoneCoordinate(
@@ -687,6 +694,7 @@ class CreateData:
 
         Args:
             stone (StoneCoordinateSchema): Stone coordinate data
+            session (AsyncSession): AsyncSession object to interact with database
         """
         try:
             new_stone = StoneCoordinate(
@@ -705,6 +713,7 @@ class CreateData:
 
         Args:
             score (ScoreSchema): Score data with first team score and second team score
+            session (AsyncSession): AsyncSession object to interact with database
         """
         try:
             new_score = Score(
@@ -723,7 +732,8 @@ class CreateData:
         """Create shot info data which is changed by dispersion rate
 
         Args:
-            shot_info (ShotInfoSchema): _description_
+            shot_info (ShotInfoSchema): Shot info data with translation velocity, angular velocity, shot angle
+            session (AsyncSession): AsyncSession object to interact with database
         """
         try:
             new_shot_info = ShotInfo(
@@ -753,6 +763,7 @@ class CreateData:
 
         Args:
             tournament (TournamentSchema): Tournament data with tournament name
+            session (AsyncSession): AsyncSession object to interact with database
         """
         try:
             new_tournament = Tournament(
@@ -773,11 +784,11 @@ class CreateData:
 
         Args:
             simulator (PhysicalSimulatorSchema): Physical simulator data with simulator name
+            session (AsyncSession): AsyncSession object to interact with database
         """
         try:
-            stmt = (
-                select(PhysicalSimulator)
-                .where(PhysicalSimulator.simulator_name == simulator.simulator_name)
+            stmt = select(PhysicalSimulator).where(
+                PhysicalSimulator.simulator_name == simulator.simulator_name
             )
             result = await session.execute(stmt)
             result = result.scalars().first()
@@ -798,6 +809,7 @@ class CreateData:
 
         Args:
             player (PlayerSchema): Player data with player name, team id, max velocity, shot dispersion rate
+            session (AsyncSession): AsyncSession object to interact with database
         """
         try:
             result = await session.execute(
@@ -824,6 +836,7 @@ class CreateData:
 
         Args:
             player (PlayerSchema): Player data with player name, team id, max velocity, shot dispersion rate
+            session (AsyncSession): AsyncSession object to interact with database
         """
         try:
             new_player = Player(
@@ -844,6 +857,8 @@ class CollectID:
     @staticmethod
     async def collect_state_ids(session: AsyncSession) -> List[UUID]:
         """Collect all state ids from state table
+        Args:
+            session (AsyncSession): AsyncSession object to interact with database
 
         Returns:
             List[UUID]: List of state ids
