@@ -1,7 +1,7 @@
 [project]
 name = "api-server"
 version = "0.1.0"
-description = "Add your description here"
+description = "New Server to use Digital Curling"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

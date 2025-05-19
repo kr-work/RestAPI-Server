@@ -28,7 +28,7 @@ parser = argparse.ArgumentParser(description="Basic Authentication")
 parser.add_argument("--username", type=str, help="Username")
 parser.add_argument("--password", type=str, help="Password")
 
-args = parser.parse_args()
+args = parser.parse_args(args=[])
 
 Session = async_sessionmaker(autocommit=False, class_=AsyncSession, bind=engine)
 basic_authentication_router = APIRouter()

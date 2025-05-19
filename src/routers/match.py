@@ -205,7 +205,6 @@ class BaseServer:
         Returns:
             UUID: send the match_id to the client
         """
-        create_data = CreateData()
         match_id: UUID = uuid7()
         score_id: UUID = uuid7()
         tournament_id: UUID = uuid7()

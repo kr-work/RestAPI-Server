@@ -1,6 +1,6 @@
 # New Server For Digital Curling
 
-This is a new server for digital curling. It is a work in progress, but this server can only run one match yet.
+This is a new server for digital curling.
 
 ## Dependencies
 
@@ -14,6 +14,18 @@ This is a new server for digital curling. It is a work in progress, but this ser
 - SQLAlchemy
 
 ## Setup and Development
+
+### Register user data to use basic authentication
+
+This server use Basic authentication to identify client.
+Basic authentication use username and password. Administrator can register user data in src/authentication/basic_authentication.py
+
+```bash
+cd ./src/authentication
+python3 basic_authentication.py --username user --password password
+```
+
+### Start server
 
 1. first you need to install docker and docker-compose, then pull this repository.
 
@@ -38,10 +50,10 @@ This is a new server for digital curling. It is a work in progress, but this ser
     docker network create dc_network
     ```
 
-1. If you want to run dc-server in production env, run the following command (but this not tested yet):
+1. If you want to run dc-server in production env, run the following comman
 
     ```bash
-    docker compose up
+    docker compose -f docekr-compose.yml up --build
     ```
 
 1. If you want to run dc-server in development env, run the following command:
