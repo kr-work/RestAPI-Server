@@ -72,6 +72,12 @@ python3 basic_authentication.py --username user --password password
 
     If you don't want to see the logs, you can run the server in daemon mode with the `-d` flag.
 
+## Communication through SSE
+
+Board data is sent to the client by SSE.
+When communication by SSE is disconnected, all board data within the end of the current match is sent to the client.
+In this case, the old board data is divided into "**state_update**" in event.type and the latest board data into "**latest_state_update**" in event.type.
+
 ## For developpers
 
 ### Generate requirements.txt
