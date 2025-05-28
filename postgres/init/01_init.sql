@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS match_data (
     winner_team_id UUID,
     score_id UUID DEFAULT gen_random_uuid(),
     time_limit INTEGER,
+    applied_rule INTEGER, -- 0: five rock rule, 1: no tick rule
     extra_end_time_limit INTEGER,
     standard_end_count INTEGER,
     physical_simulator_id UUID DEFAULT gen_random_uuid(),

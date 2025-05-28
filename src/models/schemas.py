@@ -31,6 +31,7 @@ class Match(Base):
     time_limit = Column(Float)
     extra_end_time_limit = Column(Float)
     standard_end_count = Column(Integer)
+    applied_rule = Column(Integer)  # 0: five_rock_rule, 1: no tick rule
     physical_simulator_id = Column(Uuid, default=uuid4)
     tournament_id = Column(Uuid, default=uuid7)
     match_name = Column(String)

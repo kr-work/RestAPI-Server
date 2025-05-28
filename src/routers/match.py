@@ -17,6 +17,7 @@ from src.models.dc_models import (
     ShotInfoModel,
     TeamModel,
     MatchNameModel,
+    AppliedRuleModel,
 )
 from src.models.schema_models import (
     MatchDataSchema,
@@ -68,6 +69,7 @@ def simulate_fcv1(
     total_shot_number: int,
     shot_per_team: int,
     team_number: int,
+    applied_rule: int,
 ) -> tuple[np.ndarray, bool, np.ndarray]:
     """Stone simulation with fcv1 model
 
@@ -77,6 +79,7 @@ def simulate_fcv1(
         total_shot_number (int): Total number of shots
         shot_per_team (int): Number of shots per team
         team_number (int): Team"0" or Team"1"
+        applied_rule (int): 0: "five_rock_rule", 1: "no_tick_rule"
 
     Returns:
         tuple[np.ndarray, bool, np.ndarray]: Simulated stone coordinate, apply rule flag, trajectory
@@ -107,6 +110,7 @@ def simulate_fcv1(
         angular_velocity_sign,
         team_number,
         shot_per_team,
+        applied_rule,
     )
     return simulated_stones_coordinate, trajectory
 
@@ -196,6 +200,7 @@ class BaseServer:
             client_data (ClientDataModel):
                     tournament: TournamentNameModel
                     simulator: PhysicalSimulatorNameModel
+                    applied_rule: AppliedRuleModel
                     time_limit: int
                     extra_end_time_limit: int
                     standard_end_count: int
@@ -210,6 +215,9 @@ class BaseServer:
         tournament_id: UUID = uuid7()
         stone_coordinates_id: UUID = uuid7()
         simulator_id: UUID = None
+        applied_rule_name: AppliedRuleModel = None
+        applied_rule: int = None
+
         async with Session() as session:
             simulator_id: UUID = await read_data.read_simualtor_id(
                 client_data.simulator.simulator_name, session
@@ -219,6 +227,33 @@ class BaseServer:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Simulator not found.",
             )
+        
+        if client_data.applied_rule is not None:
+            try:
+                applied_rule_name: AppliedRuleModel = AppliedRuleModel(
+                    client_data.applied_rule
+                )
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid applied rule. Please choose \"five_rock_rule\" or \"no_tick_rule\".",
+                )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Applied rule is required. Please choose \"five_rock_rule\" or \"no_tick_rule\".",
+            )
+        
+        if applied_rule_name == AppliedRuleModel.five_rock_rule:
+            applied_rule = 0
+        elif applied_rule_name == AppliedRuleModel.no_tick_rule:
+            applied_rule = 1
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid applied rule. Please choose \"five_rock_rule\" or \"no_tick_rule\".",
+            )
+        logging.info(f"Applied rule: {applied_rule_name}")
 
         # Add one score index for when the game goes into overtime
         team_score: List = [0] * (client_data.standard_end_count + 1)
@@ -301,8 +336,9 @@ class BaseServer:
             winner_team_id=None,
             score_id=score_id,
             time_limit=client_data.time_limit,
-            extra_end_time_limit=client_data.extra_end_time_limit,
             standard_end_count=client_data.standard_end_count,
+            extra_end_time_limit=client_data.extra_end_time_limit,
+            applied_rule=applied_rule,
             physical_simulator_id=simulator_id,
             tournament_id=tournament_id,
             match_name=client_data.match_name,
@@ -554,6 +590,7 @@ class DCServer:
             total_shot_number,
             shot_per_team,
             team_number,
+            match_data.applied_rule,
         )
 
         # Update the total shot number and shot per team

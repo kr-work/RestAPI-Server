@@ -113,6 +113,7 @@ class MatchDataSchema(BaseModel):
     extra_end_time_limit: int
     standard_end_count: int
     physical_simulator_id: UUID
+    applied_rule: int
     tournament_id: UUID
     match_name: str
     created_at: datetime

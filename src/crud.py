@@ -638,6 +638,7 @@ class CreateData:
                 time_limit=match.time_limit,
                 extra_end_time_limit=match.extra_end_time_limit,
                 standard_end_count=match.standard_end_count,
+                applied_rule=match.applied_rule,
                 physical_simulator_id=match.physical_simulator_id,
                 tournament_id=match.tournament_id,
                 match_name=match.match_name,

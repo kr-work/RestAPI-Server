@@ -9,6 +9,11 @@ class MatchNameModel(str, Enum):
     team1 = "team1"  # team1 is sencond attacker team at the first end
 
 
+class AppliedRuleModel(str, Enum):
+    five_rock_rule = "five_rock_rule"  # Applied Five Rock Rule
+    no_tick_rule = "no_tick_rule"  # Applied No Tick Rule
+
+
 class TournamentModel(BaseModel):
     tournament_id: UUID
     tournament_name: str
@@ -92,6 +97,7 @@ class TeamModel(BaseModel):
 class ClientDataModel(BaseModel):
     tournament: TournamentNameModel
     simulator: PhysicalSimulatorNameModel
+    applied_rule: AppliedRuleModel
     time_limit: int
     extra_end_time_limit: int
     standard_end_count: int
@@ -104,6 +110,7 @@ class MatchModel(BaseModel):
     extra_end_time_limit: int
     standard_end_count: int
     match_name: str
+    applied_rule: AppliedRuleModel
     score: Optional[ScoreModel] = None
     simulator: Optional[PhysicalSimulatorModel] = None
     tournament: Optional[TournamentModel] = None
