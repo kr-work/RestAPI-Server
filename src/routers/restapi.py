@@ -123,7 +123,7 @@ class StonePositionAPI:
     @staticmethod
     @rest_router.post("/add_stone_coordinate")
     async def add_stone_position(stone: StoneCoordinateModel):
-        stone_data_json = json.dumps(stone.stone_data)
+        stone_data_json = json.dumps(stone.stone_coordinate_data)
         response = StoneCoordinateSchema(
             stone_coordinate_id=uuid7(),  # ここはstateを格納するときのidを使うため、後で変更する
             stone_coordinate_data=stone_data_json,
@@ -145,29 +145,8 @@ class ScoreAPI:
     async def add_score(score: ScoreModel):
         response = ScoreSchema(
             score_id=uuid7(),
-            first_team_score=score.first_team_score,
-            second_team_score=score.second_team_score,
+            first_team_score=score.team0_score,
+            second_team_score=score.team1_score,
         )
         logging.info(f"response: {response}")
         await CreateData.create_score_data(response)
-
-
-class ShotInfoAPI:
-    @staticmethod
-    @rest_router.post("/add_shot_info")
-    async def add_shot_info(shot: ShotInfoModel):
-        response = ShotInfoSchema(
-            shot_id=uuid7(),
-            remaining_time=200.0,
-            player_id=uuid7(),
-            team_id=uuid7(),
-            trajectory_id=uuid7(),
-            pre_shot_state_id=uuid7(),
-            post_shot_state_id=uuid7(),
-            translation_velocity=shot.translation_velocity,
-            rotation_velocity=shot.rotation_velocity,
-            shot_angle=shot.shot_angle,
-            simulate_flag=shot.simulate_flag,
-        )
-        logging.info(f"response: {response}")
-        await CreateData.create_shot_info_data(response)
