@@ -127,7 +127,9 @@ class BasicAuthentication:
 
     # read all user data
     async def read_user_data(self) -> UserModel:
-        return await read_auth.read_user_data(username="user")
+        async with Session() as session:
+            user_data: UserModel = await read_auth.read_user_data(username="user", session=session)
+        return user_data
     
     async def delete_expired_match_data(self) -> None:
         async with Session() as session:
