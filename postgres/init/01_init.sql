@@ -43,7 +43,8 @@ CREATE TABLE IF NOT EXISTS player (
     player_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     team_id UUID DEFAULT gen_random_uuid(),
     max_velocity DOUBLE PRECISION,
-    shot_dispersion_rate DOUBLE PRECISION,
+    shot_std_dev DOUBLE PRECISION,
+    angle_std_dev DOUBLE PRECISION,
     player_name VARCHAR
 );
 

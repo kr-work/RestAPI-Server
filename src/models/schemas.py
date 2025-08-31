@@ -275,7 +275,8 @@ class Player(Base):
     player_id = Column(Uuid, primary_key=True, default=uuid4)
     team_id = Column(Uuid, default=uuid4)
     max_velocity = Column(Float)
-    shot_dispersion_rate = Column(Float)
+    shot_std_dev = Column(Float)
+    angle_std_dev = Column(Float)
     player_name = Column(String)
 
     first_player1 = relationship(

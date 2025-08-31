@@ -822,7 +822,8 @@ class CreateData:
                     player_id=player.player_id,
                     team_id=player.team_id,
                     max_velocity=player.max_velocity,
-                    shot_dispersion_rate=player.shot_dispersion_rate,
+                    shot_std_dev=player.shot_std_dev,
+                    angle_std_dev=player.angle_std_dev,
                     player_name=player.player_name,
                 )
                 session.add(new_player)
@@ -844,7 +845,8 @@ class CreateData:
                 player_id=player.player_id,
                 team_id=player.team_id,
                 max_velocity=player.max_velocity,
-                shot_dispersion_rate=player.shot_dispersion_rate,
+                shot_std_dev=player.shot_std_dev,
+                angle_std_dev=player.angle_std_dev,
                 player_name=player.player_name,
             )
             session.add(new_player)

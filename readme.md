@@ -53,7 +53,7 @@ python3 basic_authentication.py --username user --password password
 1. If you want to run dc-server in production env, run the following comman
 
     ```bash
-    docker compose -f docekr-compose.yml up --build
+    docker compose -f docker-compose.yml up --build
     ```
 
 1. If you want to run dc-server in development env, run the following command:

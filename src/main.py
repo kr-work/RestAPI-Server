@@ -31,14 +31,16 @@ async def lifespan(app):
         player_id="006951d4-37b2-48eb-85a2-af9463a1e7aa",
         team_id="5050f20f-cf97-4fb1-bbc1-f2c9052e0d17",
         max_velocity=4.0,
-        shot_dispersion_rate=0.1,
+        shot_std_dev=0.0076,
+        angle_std_dev=0.0018,
         player_name="first",
     )
     second_player = PlayerSchema(
         player_id="0eb2f8a5-bc94-40f2-9e0c-6d1300f2e7b0",
         team_id="60e1e056-3613-4846-afc9-514ea7b6adde",
         max_velocity=4.0,
-        shot_dispersion_rate=0.1,
+        shot_std_dev=0.0076,
+        angle_std_dev=0.0018,
         player_name="second",
     )
     simulator = PhysicalSimulatorSchema(

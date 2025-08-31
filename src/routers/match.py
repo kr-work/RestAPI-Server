@@ -426,9 +426,12 @@ class DCServer:
                         max_velocity=getattr(
                             team_config_data, f"player{i}"
                         ).max_velocity,
-                        shot_dispersion_rate=getattr(
+                        shot_std_dev=getattr(
                             team_config_data, f"player{i}"
-                        ).shot_dispersion_rate,
+                        ).shot_std_dev,
+                        angle_std_dev=getattr(
+                            team_config_data, f"player{i}"
+                        ).angle_std_dev,
                         player_name=player_name,
                     )
                     await create_data.create_player_data(player_data, session)
@@ -537,13 +540,14 @@ class DCServer:
         dist_translation_velocity = np.max(
             [
                 np.min([shot_info.translation_velocity, player_data.max_velocity])
-                + np.random.normal(loc=0.0, scale=player_data.shot_dispersion_rate),
+                + np.random.normal(loc=0.0, scale=player_data.shot_std_dev),
                 0.0,
             ]
         )
 
         dist_shot_info: ShotInfoModel = shot_info
         dist_shot_info.translation_velocity = dist_translation_velocity
+        dist_shot_info.shot_angle = shot_info.shot_angle + np.random.normal(loc=0.0, scale=player_data.angle_std_dev)
 
         # Calculate the time difference between the last state and this shot
         # and update the remaining time
