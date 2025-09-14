@@ -81,7 +81,8 @@ class StateModel(BaseModel):
 
 class PlayerModel(BaseModel):
     max_velocity: float
-    shot_dispersion_rate: float
+    shot_std_dev: float
+    angle_std_dev: float
     player_name: str
 
 

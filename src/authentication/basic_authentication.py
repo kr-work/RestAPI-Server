@@ -28,7 +28,7 @@ parser = argparse.ArgumentParser(description="Basic Authentication")
 parser.add_argument("--username", type=str, help="Username")
 parser.add_argument("--password", type=str, help="Password")
 
-args = parser.parse_args(args=[])
+args = parser.parse_args()
 
 Session = async_sessionmaker(autocommit=False, class_=AsyncSession, bind=engine)
 basic_authentication_router = APIRouter()
@@ -143,4 +143,5 @@ async def main(user_name: str, password: str):
 
 
 if __name__ == "__main__":
+    print(args.username, args.password)
     asyncio.run(main(args.username, args.password))
