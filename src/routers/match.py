@@ -189,7 +189,7 @@ def reset_stone_coordinate() -> StoneCoordinateSchema:
 class BaseServer:
     """Endpoint class for initiating match."""
     @staticmethod
-    @match_router.get("/start-match", response_model=UUID)
+    @match_router.post("/matches", response_model=UUID)
     async def start_match(
         client_data: ClientDataModel,
         user_data: UserModel = Depends(basic_auth.check_user_data),
@@ -452,7 +452,7 @@ class DCServer:
         return match_team_name
 
     @staticmethod
-    @match_router.get("/stream/{match_id}")
+    @match_router.get("/matches/{match_id}/stream")
     async def stream_state_info(
         match_id: UUID, user_data: UserModel = Depends(basic_auth.check_user_data)
     ):
@@ -472,7 +472,7 @@ class DCServer:
         )
 
     @staticmethod
-    @match_router.post("/shot-info")
+    @match_router.post("/shots")
     async def receive_shot_info(
         match_id: UUID,
         shot_info: ShotInfoModel,

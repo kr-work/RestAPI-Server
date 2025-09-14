@@ -53,7 +53,7 @@ rest_router = APIRouter()
 
 class MatchAPI:
     @staticmethod
-    @rest_router.get("/get_match/{match_id}", response_model=MatchDataSchema)
+    @rest_router.get("/matches/{match_id}", response_model=MatchDataSchema)
     async def get_match(match_id: UUID):
         match_data = await ReadData.read_match_data(match_id)
         return match_data
@@ -81,13 +81,13 @@ class MatchAPI:
 
 class StateAPI:
     @staticmethod
-    @rest_router.get("/get_state/{state_id}", response_model=StateSchema)
+    @rest_router.get("/states/{state_id}", response_model=StateSchema)
     async def get_state(state_id: UUID):
         state_data = await ReadData.read_state_data(state_id)
         return state_data
 
     @staticmethod
-    @rest_router.post("/add_state")
+    @rest_router.post("/states")
     async def add_state(state: StateModel):
         # logging.info(f"state: {state}")
         response = StateSchema(
@@ -104,7 +104,7 @@ class StateAPI:
         await CreateData.create_state_data(response)
 
     @staticmethod
-    @rest_router.get("/collect_state", response_model=List[UUID])
+    @rest_router.get("/states", response_model=List[UUID])
     async def collect_state():
         state_id = await CollectID.collect_state_ids()
         return state_id
@@ -113,7 +113,7 @@ class StateAPI:
 class StonePositionAPI:
     @staticmethod
     @rest_router.get(
-        "/get_stone_coordinate/{stone_coordinate_id}",
+        "/stone_coordinate/{stone_coordinate_id}",
         response_model=StoneCoordinateSchema,
     )
     async def get_stone_position(stone_coordinate_id: UUID):
@@ -121,7 +121,7 @@ class StonePositionAPI:
         return stone_data
 
     @staticmethod
-    @rest_router.post("/add_stone_coordinate")
+    @rest_router.post("/stone_coordinate")
     async def add_stone_position(stone: StoneCoordinateModel):
         stone_data_json = json.dumps(stone.stone_coordinate_data)
         response = StoneCoordinateSchema(
@@ -134,14 +134,14 @@ class StonePositionAPI:
 
 class ScoreAPI:
     @staticmethod
-    @rest_router.get("/get_score/{score_id}", response_model=ScoreSchema)
+    @rest_router.get("/scores/{score_id}", response_model=ScoreSchema)
     async def get_score(score_id: UUID):
         logging.info(f"score_id: {score_id}")
         score_data = await ReadData.read_score_data(score_id)
         return score_data
 
     @staticmethod
-    @rest_router.post("/add_score")
+    @rest_router.post("/scores")
     async def add_score(score: ScoreModel):
         response = ScoreSchema(
             score_id=uuid7(),
