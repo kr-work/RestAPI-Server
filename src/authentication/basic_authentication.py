@@ -24,12 +24,6 @@ from src.create_sqlite_engine import engine
 from src.models.dc_models import MatchNameModel
 from src.load_secrets import pepper_data
 
-parser = argparse.ArgumentParser(description="Basic Authentication")
-parser.add_argument("--username", type=str, help="Username")
-parser.add_argument("--password", type=str, help="Password")
-
-args = parser.parse_args()
-
 Session = async_sessionmaker(autocommit=False, class_=AsyncSession, bind=engine)
 basic_authentication_router = APIRouter()
 security = HTTPBasic()
@@ -135,6 +129,12 @@ class BasicAuthentication:
         async with Session() as session:
             await delete_auth.delete_expired_match_data(session)
 
+def get_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Basic Authentication")
+    parser.add_argument("--username", type=str, help="Username", required=True)
+    parser.add_argument("--password", type=str, help="Password", required=True)
+    return parser
+
 async def main(user_name: str, password: str):
     basic_auth = BasicAuthentication()
     await basic_auth.store_user_data(user_name, password)
@@ -143,5 +143,6 @@ async def main(user_name: str, password: str):
 
 
 if __name__ == "__main__":
-    print(args.username, args.password)
+    parser = get_parser()
+    args = parser.parse_args()
     asyncio.run(main(args.username, args.password))

@@ -15,7 +15,7 @@ RUN apt update && apt install -y git libgomp1 libpq-dev && \
 
 ENTRYPOINT ["fastapi"]
 
-CMD ["run", "src/main.py", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["run", "/app/src/main.py", "--host", "0.0.0.0", "--port", "8080"]
 # CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "2"]
 # CMD ["gunicorn", "-w", "2", "-k", "uvicorn.workers.UvicornWorker", "src.main:app","--bind", "0.0.0.0:8080"]
 # CMD ["fastapi", "run", "src/main.py", "--host", "0.0.0.0", "--port", "8080"]
