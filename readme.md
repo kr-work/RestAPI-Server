@@ -95,5 +95,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [ ] Add tests
 - [ ] Preparation for operation in a production environment
 - [ ] Develop a mode for multiple simultaneous matches in Webhook
-- [ ] Develop a match mode in RESTAPI
 - [ ] Add REST API for GUI, and tumeshogi mode and so on...
+
