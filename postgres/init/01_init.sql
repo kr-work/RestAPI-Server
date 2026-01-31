@@ -84,9 +84,9 @@ CREATE TABLE IF NOT EXISTS shot_info (
     trajectory_id UUID DEFAULT gen_random_uuid(),
     pre_shot_state_id UUID DEFAULT gen_random_uuid(),
     post_shot_state_id UUID DEFAULT gen_random_uuid(),
-    actual_translation_velocity DOUBLE PRECISION,
+    actual_translational_velocity DOUBLE PRECISION,
     actual_shot_angle DOUBLE PRECISION,
-    translation_velocity DOUBLE PRECISION,
+    translational_velocity DOUBLE PRECISION,
     angular_velocity DOUBLE PRECISION,
     shot_angle DOUBLE PRECISION
 );

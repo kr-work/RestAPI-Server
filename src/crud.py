@@ -795,9 +795,9 @@ class CreateData:
                 trajectory_id=shot_info.trajectory_id,
                 pre_shot_state_id=shot_info.pre_shot_state_id,
                 post_shot_state_id=shot_info.post_shot_state_id,
-                actual_translation_velocity=shot_info.actual_translation_velocity,
+                actual_translational_velocity=shot_info.actual_translational_velocity,
                 actual_shot_angle=shot_info.actual_shot_angle,
-                translation_velocity=shot_info.translation_velocity,
+                translational_velocity=shot_info.translational_velocity,
                 shot_angle=shot_info.shot_angle,
                 angular_velocity=shot_info.angular_velocity,
             )

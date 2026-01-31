@@ -51,7 +51,7 @@ class DataConverter:
         last_move = None
         if shot_info_data is not None:
             last_move = ShotInfoModel(
-                translation_velocity=shot_info_data.translation_velocity,
+                translational_velocity=shot_info_data.translational_velocity,
                 angular_velocity=shot_info_data.angular_velocity,
                 shot_angle=shot_info_data.shot_angle,
             )

@@ -61,9 +61,9 @@ class ShotInfoSchema(BaseModel):
     trajectory_id: UUID
     pre_shot_state_id: UUID
     post_shot_state_id: UUID
-    actual_translation_velocity: float
+    actual_translational_velocity: float
     actual_shot_angle: float
-    translation_velocity: float
+    translational_velocity: float
     angular_velocity: float
     shot_angle: float
 

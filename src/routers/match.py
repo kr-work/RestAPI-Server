@@ -84,8 +84,8 @@ def simulate_fcv1(
     Returns:
         tuple[np.ndarray, bool, np.ndarray]: Simulated stone coordinate, apply rule flag, trajectory
     """
-    velocity_x: np.float64 = shot_info.translation_velocity * np.cos(shot_info.shot_angle)
-    velocity_y: np.float64 = shot_info.translation_velocity * np.sin(shot_info.shot_angle)
+    velocity_x: np.float64 = shot_info.translational_velocity * np.cos(shot_info.shot_angle)
+    velocity_y: np.float64 = shot_info.translational_velocity * np.sin(shot_info.shot_angle)
     stone_position = np.array(
         [
             coordinate
@@ -563,16 +563,16 @@ class DCServer:
             player_data: PlayerSchema = await read_data.read_player_data(
                 player_id, session
             )
-        dist_translation_velocity = np.max(
+        dist_translational_velocity = np.max(
             [
-                np.min([shot_info.translation_velocity, player_data.max_velocity])
+                np.min([shot_info.translational_velocity, player_data.max_velocity])
                 + np.random.normal(loc=0.0, scale=player_data.shot_std_dev),
                 0.0,
             ]
         )
 
         dist_shot_info: ShotInfoModel = shot_info.model_copy(deep=True)
-        dist_shot_info.translation_velocity = dist_translation_velocity
+        dist_shot_info.translational_velocity = dist_translational_velocity
         dist_shot_info.shot_angle = shot_info.shot_angle + np.random.normal(loc=0.0, scale=player_data.angle_std_dev)
 
         # Calculate the time difference between the last state and this shot
@@ -640,9 +640,9 @@ class DCServer:
             trajectory_id=uuid7(),
             pre_shot_state_id=pre_state_data.state_id,
             post_shot_state_id=uuid7(),
-            actual_translation_velocity=shot_info.translation_velocity,     # actual value before distortion
+            actual_translational_velocity=shot_info.translational_velocity,     # actual value before distortion
             actual_shot_angle=shot_info.shot_angle,
-            translation_velocity=dist_translation_velocity,                 # distorted value
+            translational_velocity=dist_translational_velocity,                 # distorted value
             shot_angle=dist_shot_info.shot_angle,
             angular_velocity=shot_info.angular_velocity,
         )

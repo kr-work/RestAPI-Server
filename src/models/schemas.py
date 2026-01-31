@@ -168,9 +168,9 @@ class ShotInfo(Base):
     trajectory_id = Column(Uuid, default=uuid4)
     pre_shot_state_id = Column(Uuid, default=uuid7)
     post_shot_state_id = Column(Uuid, default=uuid7)
-    actual_translation_velocity = Column(Float)
+    actual_translational_velocity = Column(Float)
     actual_shot_angle = Column(Float)
-    translation_velocity = Column(Float)
+    translational_velocity = Column(Float)
     angular_velocity = Column(Float)
     shot_angle = Column(Float)
 
