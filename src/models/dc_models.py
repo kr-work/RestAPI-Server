@@ -41,15 +41,15 @@ class CoordinateDataModel(BaseModel):
 
 
 class StoneCoordinateModel(BaseModel):
-    stone_coordinate_data: Dict[str, List[CoordinateDataModel]]  # フラットなDict型
+    data: Dict[str, List[CoordinateDataModel]]  # フラットなDict型
 
     class Config:
         from_attributes = True
 
 
 class ScoreModel(BaseModel):
-    team0_score: list
-    team1_score: list
+    team0: list
+    team1: list
 
     class Config:
         from_attributes = True
@@ -57,7 +57,6 @@ class ScoreModel(BaseModel):
 
 class ShotInfoModel(BaseModel):
     translation_velocity: float
-    angular_velocity_sign: int
     angular_velocity: float
     shot_angle: float
 
@@ -72,6 +71,7 @@ class StateModel(BaseModel):
     second_team_remaining_time: float
     first_team_extra_end_remaining_time: float
     second_team_extra_end_remaining_time: float
+    last_move: Optional[ShotInfoModel] = None
     stone_coordinate: Optional[StoneCoordinateModel] = None
     score: Optional[ScoreModel] = None
 
@@ -99,16 +99,16 @@ class ClientDataModel(BaseModel):
     tournament: TournamentNameModel
     simulator: PhysicalSimulatorNameModel
     applied_rule: AppliedRuleModel
-    time_limit: int
-    extra_end_time_limit: int
+    time_limit: float
+    extra_end_time_limit: float
     standard_end_count: int
     match_name: str
 
 
 class MatchModel(BaseModel):
     match_id: UUID
-    time_limit: int
-    extra_end_time_limit: int
+    time_limit: float
+    extra_end_time_limit: float
     standard_end_count: int
     match_name: str
     applied_rule: AppliedRuleModel

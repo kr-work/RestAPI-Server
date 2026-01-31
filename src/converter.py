@@ -7,6 +7,7 @@ from src.models.dc_models import (
     StateModel,
     CoordinateDataModel,
     StoneCoordinateModel,
+    ShotInfoModel,
 )
 from src.models.schema_models import (
     MatchDataSchema,
@@ -19,7 +20,10 @@ class DataConverter:
     """This class is used to convert data between different formats."""
 
     def convert_stateschema_to_statemodel(
-        self, match_data: MatchDataSchema, state_data: StateSchema
+        self,
+        match_data: MatchDataSchema,
+        state_data: StateSchema,
+        shot_info_data=None,
     ) -> StateModel:
         """Convert the StateSchema to the StateModel to send client
 
@@ -44,6 +48,14 @@ class DataConverter:
                 "team0" if next_shot_team_id == match_data.first_team_id else "team1"
             )
 
+        last_move = None
+        if shot_info_data is not None:
+            last_move = ShotInfoModel(
+                translation_velocity=shot_info_data.translation_velocity,
+                angular_velocity=shot_info_data.angular_velocity,
+                shot_angle=shot_info_data.shot_angle,
+            )
+
         state_model: StateModel = StateModel(
             winner_team=winner_team_name,
             first_team_name=match_data.first_team_name,
@@ -56,15 +68,16 @@ class DataConverter:
             second_team_remaining_time=state_data.second_team_remaining_time,
             first_team_extra_end_remaining_time=state_data.first_team_extra_end_remaining_time,
             second_team_extra_end_remaining_time=state_data.second_team_extra_end_remaining_time,
+            last_move=last_move,
             stone_coordinate=StoneCoordinateModel(
-                stone_coordinate_data={
+                data={
                     team: [CoordinateDataModel(**coord) for coord in coords]
-                    for team, coords in state_data.stone_coordinate.stone_coordinate_data.items()
+                    for team, coords in state_data.stone_coordinate.data.items()
                 }
             ),
             score=ScoreModel(
-                team0_score=state_data.score.team0_score,
-                team1_score=state_data.score.team1_score,
+                team0=state_data.score.team0,
+                team1=state_data.score.team1,
             ),
         )
         return state_model
@@ -80,10 +93,7 @@ class DataConverter:
         Returns:
             StoneCoordinateSchema: The stone coordinate data of the match and is a type for transmission to the client
         """
-        stones_data = json.loads(stone_coordinate_data.model_dump_json())
-        stones_data = stones_data["stone_coordinate_data"]
-        stones_data = json.dumps(stones_data)
         stone_coordinate_schema: StoneCoordinateSchema = StoneCoordinateSchema(
-            stone_coordinate_id=uuid7(), stone_coordinate_data=stones_data
+            stone_coordinate_id=uuid7(), data=stone_coordinate_data.data
         )
         return stone_coordinate_schema

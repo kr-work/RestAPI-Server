@@ -84,30 +84,24 @@ def simulate_fcv1(
     Returns:
         tuple[np.ndarray, bool, np.ndarray]: Simulated stone coordinate, apply rule flag, trajectory
     """
-    angle_radian: np.float64 = np.deg2rad(shot_info.shot_angle)
-    velocity_x: np.float64 = shot_info.translation_velocity * np.cos(angle_radian)
-    velocity_y: np.float64 = shot_info.translation_velocity * np.sin(angle_radian)
-    angular_velocity_sign = shot_info.angular_velocity_sign
+    velocity_x: np.float64 = shot_info.translation_velocity * np.cos(shot_info.shot_angle)
+    velocity_y: np.float64 = shot_info.translation_velocity * np.sin(shot_info.shot_angle)
     stone_position = np.array(
         [
             coordinate
-            for team, stones in state_data.stone_coordinate.stone_coordinate_data.items()
+            for team, stones in state_data.stone_coordinate.data.items()
             for stone in stones
             for coordinate in (stone["x"], stone["y"])
         ]
     )
-    angular_velocity_sign = 1
-    if shot_info.angular_velocity_sign == "cw":
-        angular_velocity_sign = 1
-    elif shot_info.angular_velocity_sign == "ccw":
-        angular_velocity_sign = -1
+    spin_sign = 1 if shot_info.angular_velocity >= 0 else -1
 
     simulated_stones_coordinate, trajectory = stone_simulator.simulator(
         stone_position,
         total_shot_number,
         velocity_x,
         velocity_y,
-        angular_velocity_sign,
+        spin_sign,
         team_number,
         shot_per_team,
         applied_rule,
@@ -138,7 +132,7 @@ async def state_end_number_update(state_data: StateSchema, next_shot_team_id: UU
         second_team_extra_end_remaining_time=state_data.second_team_extra_end_remaining_time,
         stone_coordinate_id=stone_coordinate.stone_coordinate_id,
         score_id=state_data.score_id,
-        shot_id=uuid7(),
+        shot_id=None,
         next_shot_team_id=next_shot_team_id,
         created_at=datetime.now(),
         stone_coordinate=stone_coordinate,
@@ -181,7 +175,7 @@ def reset_stone_coordinate() -> StoneCoordinateSchema:
     }
     stone_coordinate: StoneCoordinateSchema = StoneCoordinateSchema(
         stone_coordinate_id=uuid7(),
-        stone_coordinate_data=json.dumps(stone_coordinates_data),
+        data=stone_coordinates_data,
     )
     return stone_coordinate
 
@@ -201,8 +195,8 @@ class BaseServer:
                     tournament: TournamentNameModel
                     simulator: PhysicalSimulatorNameModel
                     applied_rule: AppliedRuleModel
-                    time_limit: int
-                    extra_end_time_limit: int
+                    time_limit: float
+                    extra_end_time_limit: float
                     standard_end_count: int
                     match_name: str
             valid (bool): Basic authentication result
@@ -283,7 +277,7 @@ class BaseServer:
 
         stone_coordinate: StoneCoordinateSchema = StoneCoordinateSchema(
             stone_coordinate_id=stone_coordinates_id,
-            stone_coordinate_data=json.dumps(stone_coordinates_data),
+            data=stone_coordinates_data,
         )
 
         state = StateSchema(
@@ -299,14 +293,14 @@ class BaseServer:
             second_team_extra_end_remaining_time=client_data.extra_end_time_limit,
             stone_coordinate_id=stone_coordinates_id,
             score_id=score_id,
-            shot_id=uuid7(),
+            shot_id=None,
             next_shot_team_id="5050f20f-cf97-4fb1-bbc1-f2c9052e0d17",
             created_at=datetime.now(),
             stone_coordinate=stone_coordinate,
         )
         # Create score data
         score: ScoreSchema = ScoreSchema(
-            score_id=score_id, team0_score=team_score, team1_score=team_score
+            score_id=score_id, team0=team_score, team1=team_score
         )
         # Create simulator data
         simulator: PhysicalSimulatorSchema = PhysicalSimulatorSchema(
@@ -472,6 +466,25 @@ class DCServer:
         )
 
     @staticmethod
+    @match_router.get("/matches/{match_id}/viewer")
+    async def stream_state_info_viewer(
+        match_id: UUID
+    ):
+        """Stream the state information to the viewer client
+        Args:
+            match_id (UUID): match_id
+        """
+        channel: str = f"match:{match_id}"
+        redis_subscriber = RedisSubscriber(Session, match_id, "viewer")
+
+        return StreamingResponse(
+            redis_subscriber.event_generator(channel, redis),
+            media_type="text/event-stream; charset=utf-8",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+        )
+        
+
+    @staticmethod
     @match_router.post("/shots")
     async def receive_shot_info(
         match_id: UUID,
@@ -498,6 +511,19 @@ class DCServer:
             # Get latest state data to know total shot number, stone coordinate and remaining time and so on.
             pre_state_data: StateSchema = await read_data.read_latest_state_data(
                 match_id, session
+            )
+
+        if match_data is None or pre_state_data is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Match or state not found.",
+            )
+
+        # If the match is already finished, do not accept further shots.
+        if pre_state_data.winner_team_id is not None or pre_state_data.next_shot_team_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Match already finished.",
             )
         # Get match team name to know which team is sending the shot information
         match_team_name: str = await basic_auth.check_match_data(
@@ -545,7 +571,7 @@ class DCServer:
             ]
         )
 
-        dist_shot_info: ShotInfoModel = shot_info
+        dist_shot_info: ShotInfoModel = shot_info.model_copy(deep=True)
         dist_shot_info.translation_velocity = dist_translation_velocity
         dist_shot_info.shot_angle = shot_info.shot_angle + np.random.normal(loc=0.0, scale=player_data.angle_std_dev)
 
@@ -614,11 +640,11 @@ class DCServer:
             trajectory_id=uuid7(),
             pre_shot_state_id=pre_state_data.state_id,
             post_shot_state_id=uuid7(),
-            actual_translation_velocity=shot_info.translation_velocity,
-            translation_velocity=dist_translation_velocity,
-            angular_velocity_sign=shot_info.angular_velocity_sign,
+            actual_translation_velocity=shot_info.translation_velocity,     # actual value before distortion
+            actual_shot_angle=shot_info.shot_angle,
+            translation_velocity=dist_translation_velocity,                 # distorted value
+            shot_angle=dist_shot_info.shot_angle,
             angular_velocity=shot_info.angular_velocity,
-            shot_angle=shot_info.shot_angle,
         )
 
         stone_coordinate = {
@@ -639,15 +665,15 @@ class DCServer:
         }
         stone_coordinate_data: StoneCoordinateSchema = StoneCoordinateSchema(
             stone_coordinate_id=uuid7(),
-            stone_coordinate_data=json.dumps(stone_coordinate),
+            data=stone_coordinate,
         )
 
         # The shot is the last shot of the "end"
         if total_shot_number == 16:
             next_shot_team_id: UUID = None
             pre_score_data: ScoreSchema = pre_state_data.score
-            team0_score: List = pre_score_data.team0_score
-            team1_score: List = pre_score_data.team1_score
+            team0_score: List = pre_score_data.team0
+            team1_score: List = pre_score_data.team1
 
             team0_stones_position = [
                 (stone[0], stone[1]) for stone in simulated_stones_coordinate[0]
@@ -698,8 +724,8 @@ class DCServer:
 
             score_data: ScoreSchema = ScoreSchema(
                 score_id=pre_score_data.score_id,
-                team0_score=team0_score,
-                team1_score=team1_score,
+                team0=team0_score,
+                team1=team1_score,
             )
             async with Session() as session:
                 await update_data.update_score(score_data, session)
@@ -729,7 +755,7 @@ class DCServer:
             second_team_extra_end_remaining_time=team1_extra_end_remaining_time,
             stone_coordinate_id=stone_coordinate_data.stone_coordinate_id,
             score_id=pre_state_data.score_id,
-            shot_id=shot_info_data.shot_id,
+            shot_id=None,
             next_shot_team_id=next_shot_team_id,
             created_at=datetime.now(),
             stone_coordinate=stone_coordinate_data,
@@ -737,6 +763,9 @@ class DCServer:
         async with Session() as session:
             await create_data.create_shot_info_data(shot_info_data, session)
             await create_data.create_state_data(state_data, session)
+            await update_data.update_state_shot_id(
+                pre_state_data.state_id, shot_info_data.shot_id, session
+            )
 
         channel = f"match:{match_id}"
         await redis.publish(channel, str(match_id))

@@ -9,8 +9,8 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- Score
 CREATE TABLE IF NOT EXISTS score (
     score_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    team0_score INTEGER[],
-    team1_score INTEGER[]
+  team0 INTEGER[],
+  team1 INTEGER[]
 );
 
 -- PhysicalSimulator
@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS tournament (
 -- StoneCoordinate
 CREATE TABLE IF NOT EXISTS stone_coordinate (
     stone_coordinate_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    stone_coordinate_data JSONB
+  data JSONB
 );
 
 -- Trajectory
@@ -65,9 +65,9 @@ CREATE TABLE IF NOT EXISTS match_data (
     second_team_player4_id UUID DEFAULT gen_random_uuid(),
     winner_team_id UUID,
     score_id UUID DEFAULT gen_random_uuid(),
-    time_limit INTEGER,
+    time_limit DOUBLE PRECISION,
     applied_rule INTEGER, -- 0: five rock rule, 1: no tick rule
-    extra_end_time_limit INTEGER,
+    extra_end_time_limit DOUBLE PRECISION,
     standard_end_count INTEGER,
     physical_simulator_id UUID DEFAULT gen_random_uuid(),
     tournament_id UUID DEFAULT gen_random_uuid(),
@@ -85,8 +85,8 @@ CREATE TABLE IF NOT EXISTS shot_info (
     pre_shot_state_id UUID DEFAULT gen_random_uuid(),
     post_shot_state_id UUID DEFAULT gen_random_uuid(),
     actual_translation_velocity DOUBLE PRECISION,
+    actual_shot_angle DOUBLE PRECISION,
     translation_velocity DOUBLE PRECISION,
-    angular_velocity_sign INTEGER,
     angular_velocity DOUBLE PRECISION,
     shot_angle DOUBLE PRECISION
 );

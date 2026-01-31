@@ -39,7 +39,7 @@ class TrajectorySchema(BaseModel):
 
 class StoneCoordinateSchema(BaseModel):
     stone_coordinate_id: UUID
-    stone_coordinate_data: Json
+    data: dict
 
     class Config:
         from_attributes = True
@@ -47,8 +47,8 @@ class StoneCoordinateSchema(BaseModel):
 
 class ScoreSchema(BaseModel):
     score_id: UUID
-    team0_score: list
-    team1_score: list
+    team0: list
+    team1: list
 
     class Config:
         from_attributes = True
@@ -62,8 +62,8 @@ class ShotInfoSchema(BaseModel):
     pre_shot_state_id: UUID
     post_shot_state_id: UUID
     actual_translation_velocity: float
+    actual_shot_angle: float
     translation_velocity: float
-    angular_velocity_sign: int
     angular_velocity: float
     shot_angle: float
 
@@ -110,8 +110,8 @@ class MatchDataSchema(BaseModel):
     second_team_player4_id: UUID
     winner_team_id: UUID | None
     score_id: UUID
-    time_limit: int
-    extra_end_time_limit: int
+    time_limit: float
+    extra_end_time_limit: float
     standard_end_count: int
     physical_simulator_id: UUID
     applied_rule: int

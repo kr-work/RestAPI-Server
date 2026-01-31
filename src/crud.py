@@ -210,12 +210,31 @@ class UpdateData:
             if result is None:
                 return False
 
-            result.team0_score = score.team0_score
-            result.team1_score = score.team1_score
+            result.team0 = score.team0
+            result.team1 = score.team1
             await session.commit()
         except Exception as e:
             await session.rollback()
             logging.error(f"Failed to update score data: {e}")
+
+    @staticmethod
+    async def update_state_shot_id(state_id: UUID, shot_id: UUID, session: AsyncSession) -> bool:
+        """Update a State row to attach the decided shot_id."""
+        try:
+            stmt = select(State).where(State.state_id == state_id)
+            result = await session.execute(stmt)
+            result = result.scalars().first()
+
+            if result is None:
+                return False
+
+            result.shot_id = shot_id
+            await session.commit()
+            return True
+        except Exception as e:
+            await session.rollback()
+            logging.error(f"Failed to update state shot_id: {e}")
+            return False
 
 
 class ReadData:
@@ -281,9 +300,7 @@ class ReadData:
             if result.stone_coordinate:
                 stone_coordinate_data = StoneCoordinateSchema(
                     stone_coordinate_id=result.stone_coordinate.stone_coordinate_id,
-                    stone_coordinate_data=json.dumps(
-                        result.stone_coordinate.stone_coordinate_data
-                    ),
+                    data=result.stone_coordinate.data,
                 )
 
             state_data = StateSchema(
@@ -336,13 +353,6 @@ class ReadData:
             if result is None:
                 return None
 
-            if result.stone_coordinate and isinstance(
-                result.stone_coordinate.stone_coordinate_data, dict
-            ):
-                result.stone_coordinate.stone_coordinate_data = json.dumps(
-                    result.stone_coordinate.stone_coordinate_data
-                )
-
             state_data = StateSchema.model_validate(result)
             return state_data
 
@@ -381,13 +391,6 @@ class ReadData:
 
             state_data_list: List[StateSchema] = []
             for state in result:
-                if state.stone_coordinate and isinstance(
-                    state.stone_coordinate.stone_coordinate_data, dict
-                ):
-                    state.stone_coordinate.stone_coordinate_data = json.dumps(
-                        state.stone_coordinate.stone_coordinate_data
-                    )
-
                 state_data_list.append(
                     StateSchema.model_validate(state)
                 )
@@ -423,7 +426,7 @@ class ReadData:
 
             stone_data = StoneCoordinateSchema(
                 stone_coordinate_id=result.stone_coordinate_id,
-                stone_coordinate_data=json.dumps(result.stone_coordinate_data),
+                data=result.data,
             )
             return stone_data
 
@@ -451,8 +454,8 @@ class ReadData:
 
             score_data = ScoreSchema(
                 score_id=result.score_id,
-                team0_score=result.team0_score,
-                team1_score=result.team1_score,
+                team0=result.team0,
+                team1=result.team1,
             )
             return score_data
         except Exception as e:
@@ -599,6 +602,36 @@ class ReadData:
             logging.error(f"Failed to read simulator id: {e}")
             return None
 
+    @staticmethod
+    async def read_shot_info_data(shot_id: UUID, session: AsyncSession) -> ShotInfoSchema | None:
+        """Read shot info data from database by shot_id."""
+        try:
+            stmt = select(ShotInfo).where(ShotInfo.shot_id == shot_id)
+            result = await session.execute(stmt)
+            result = result.scalars().first()
+            if result is None:
+                return None
+            return ShotInfoSchema.model_validate(result)
+        except Exception as e:
+            logging.error(f"Failed to read shot info data: {e}")
+            return None
+
+    @staticmethod
+    async def read_last_shot_info_by_post_state_id(
+        post_shot_state_id: UUID, session: AsyncSession
+    ) -> ShotInfoSchema | None:
+        """Read the shot info that produced the given state (post_shot_state_id == state_id)."""
+        try:
+            stmt = select(ShotInfo).where(ShotInfo.post_shot_state_id == post_shot_state_id)
+            result = await session.execute(stmt)
+            result = result.scalars().first()
+            if result is None:
+                return None
+            return ShotInfoSchema.model_validate(result)
+        except Exception as e:
+            logging.error(f"Failed to read last shot info by post state id: {e}")
+            return None
+
 
 class CreateData:
     @staticmethod
@@ -612,8 +645,8 @@ class CreateData:
         try:
             new_score = Score(
                 score_id=match.score.score_id,
-                team0_score=match.score.team0_score,
-                team1_score=match.score.team1_score,
+                team0=match.score.team0,
+                team1=match.score.team1,
             )
             new_tournament = Tournament(
                 tournament_id=match.tournament.tournament_id,
@@ -661,9 +694,18 @@ class CreateData:
             session (AsyncSession): AsyncSession object to interact with database
         """
         try:
+            stone_coordinate_data = state.stone_coordinate.data
+            for _ in range(2):
+                if not isinstance(stone_coordinate_data, str):
+                    break
+                try:
+                    stone_coordinate_data = json.loads(stone_coordinate_data)
+                except json.JSONDecodeError:
+                    break
+
             new_stone_coordinate = StoneCoordinate(
                 stone_coordinate_id=state.stone_coordinate.stone_coordinate_id,
-                stone_coordinate_data=state.stone_coordinate.stone_coordinate_data,
+                data=stone_coordinate_data,
             )
 
             new_state = State(
@@ -698,9 +740,18 @@ class CreateData:
             session (AsyncSession): AsyncSession object to interact with database
         """
         try:
+            stone_coordinate_data = stone.data
+            for _ in range(2):
+                if not isinstance(stone_coordinate_data, str):
+                    break
+                try:
+                    stone_coordinate_data = json.loads(stone_coordinate_data)
+                except json.JSONDecodeError:
+                    break
+
             new_stone = StoneCoordinate(
                 stone_coordinate_id=stone.stone_coordinate_id,
-                stone_coordinate_data=stone.stone_coordinate_data,
+                data=stone_coordinate_data,
             )
             session.add(new_stone)
             await session.commit()
@@ -719,8 +770,8 @@ class CreateData:
         try:
             new_score = Score(
                 score_id=score.score_id,
-                team0_score=score.team0_score,
-                team1_score=score.team1_score,
+                team0=score.team0,
+                team1=score.team1,
             )
             session.add(new_score)
             await session.commit()
@@ -745,10 +796,10 @@ class CreateData:
                 pre_shot_state_id=shot_info.pre_shot_state_id,
                 post_shot_state_id=shot_info.post_shot_state_id,
                 actual_translation_velocity=shot_info.actual_translation_velocity,
+                actual_shot_angle=shot_info.actual_shot_angle,
                 translation_velocity=shot_info.translation_velocity,
-                angular_velocity_sign=shot_info.angular_velocity_sign,
-                angular_velocity=shot_info.angular_velocity,
                 shot_angle=shot_info.shot_angle,
+                angular_velocity=shot_info.angular_velocity,
             )
             session.add(new_shot_info)
             await session.commit()

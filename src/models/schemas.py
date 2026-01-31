@@ -116,8 +116,8 @@ class Match(Base):
 class Score(Base):
     __tablename__ = "score"
     score_id = Column(Uuid, primary_key=True, default=uuid7)
-    team0_score = Column(ARRAY(Integer))
-    team1_score = Column(ARRAY(Integer))
+    team0 = Column(ARRAY(Integer))
+    team1 = Column(ARRAY(Integer))
 
     match = relationship(
         "Match",
@@ -169,8 +169,8 @@ class ShotInfo(Base):
     pre_shot_state_id = Column(Uuid, default=uuid7)
     post_shot_state_id = Column(Uuid, default=uuid7)
     actual_translation_velocity = Column(Float)
+    actual_shot_angle = Column(Float)
     translation_velocity = Column(Float)
-    angular_velocity_sign = Column(Integer)
     angular_velocity = Column(Float)
     shot_angle = Column(Float)
 
@@ -179,6 +179,7 @@ class ShotInfo(Base):
         primaryjoin="ShotInfo.shot_id == foreign(State.shot_id)",
         back_populates="shot_info",
         cascade="all, delete",
+        uselist=False,
     )
     pre_shot_state = relationship(
         "State",
@@ -229,6 +230,7 @@ class State(Base):
         primaryjoin="foreign(State.shot_id) == ShotInfo.shot_id",
         back_populates="state",
         cascade="all, delete",
+        uselist=False,
     )
     stone_coordinate = relationship(
         "StoneCoordinate",
@@ -253,7 +255,7 @@ class State(Base):
 class StoneCoordinate(Base):
     __tablename__ = "stone_coordinate"
     stone_coordinate_id = Column(Uuid, primary_key=True, default=uuid7)
-    stone_coordinate_data = Column(JSONB)
+    data = Column(JSONB)
 
     state = relationship(
         "State",

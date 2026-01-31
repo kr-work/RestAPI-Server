@@ -123,10 +123,9 @@ class StonePositionAPI:
     @staticmethod
     @rest_router.post("/stone_coordinate")
     async def add_stone_position(stone: StoneCoordinateModel):
-        stone_data_json = json.dumps(stone.stone_coordinate_data)
         response = StoneCoordinateSchema(
             stone_coordinate_id=uuid7(),  # ここはstateを格納するときのidを使うため、後で変更する
-            stone_coordinate_data=stone_data_json,
+            data=stone.data,
         )
         logging.info(f"response: {response}")
         await CreateData.create_stone_data(response)
@@ -145,8 +144,8 @@ class ScoreAPI:
     async def add_score(score: ScoreModel):
         response = ScoreSchema(
             score_id=uuid7(),
-            first_team_score=score.team0_score,
-            second_team_score=score.team1_score,
+            team0=score.team0,
+            team1=score.team1,
         )
         logging.info(f"response: {response}")
         await CreateData.create_score_data(response)
