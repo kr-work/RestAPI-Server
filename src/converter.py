@@ -25,7 +25,6 @@ class DataConverter:
         match_data: MatchDataSchema,
         state_data: StateSchema,
         shot_info_data=None,
-        mix_doubles_end_setup=None,
     ) -> StateModel:
         """Convert the StateSchema to the StateModel to send client
 
@@ -71,6 +70,33 @@ class DataConverter:
             shot_number = None
             total_shot_number = None
 
+        # To parse stone coordinates data
+        stone_coordinate_data: dict = {}
+        for team, coords in state_data.stone_coordinate.data.items():
+            if coords is None:
+                normalized = []
+            elif isinstance(coords, list) and coords and isinstance(coords[0], list):
+                normalized = []
+                for item in coords:
+                    if isinstance(item, list):
+                        normalized.extend(item)
+                    else:
+                        normalized.append(item)
+            else:
+                normalized = coords
+
+            stone_coordinate_data[team] = [CoordinateDataModel(**coord) for coord in normalized]
+
+        end_setup_team_id = match_data.second_team_id
+        if (
+            match_data.mix_doubles_settings is not None
+            and getattr(match_data.mix_doubles_settings, "end_setup_team_ids", None) is not None
+            and state_data is not None
+        ):
+            ids = match_data.mix_doubles_settings.end_setup_team_ids
+            if isinstance(ids, list) and 0 <= int(state_data.end_number) < len(ids):
+                end_setup_team_id = ids[int(state_data.end_number)]
+
         state_model: StateModel = StateModel(
             winner_team=winner_team_name,
             first_team_name=match_data.first_team_name,
@@ -89,9 +115,7 @@ class DataConverter:
                         "team0"
                         if (
                             (
-                                mix_doubles_end_setup.end_setup_team_id
-                                if mix_doubles_end_setup is not None
-                                else match_data.first_team_id
+                                end_setup_team_id
                             )
                             == match_data.first_team_id
                         )
@@ -109,12 +133,7 @@ class DataConverter:
                 else None
             ),
             last_move=last_move,
-            stone_coordinate=StoneCoordinateModel(
-                data={
-                    team: [CoordinateDataModel(**coord) for coord in coords]
-                    for team, coords in state_data.stone_coordinate.data.items()
-                }
-            ),
+            stone_coordinate=StoneCoordinateModel(data=stone_coordinate_data),
             score=ScoreModel(
                 team0=state_data.score.team0,
                 team1=state_data.score.team1,

@@ -83,6 +83,17 @@ class EndSetupRequestModel(BaseModel):
     power_play_side: Optional[Literal["left", "right"]] = None
 
 
+class PositionedStonesModel(str, Enum):
+    center_guard = "center_guard"
+    center_house = "center_house"
+    pp_left = "pp_left"
+    pp_right = "pp_right"
+
+
+class PositionedStonesRequestModel(BaseModel):
+    positioned_stones: PositionedStonesModel
+
+
 class StateModel(BaseModel):
     winner_team: str | None
     end_number: int

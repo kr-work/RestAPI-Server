@@ -19,7 +19,6 @@ from src.models.schema_models import (
 from src.models.schemas import (
     Match,
     MatchMixDoublesSettings,
-    MatchMixDoublesEndSetup,
     Score,
     State,
     StoneCoordinate,
@@ -84,6 +83,7 @@ class UpdateData:
     async def update_first_team(
         match_id: UUID,
         session: AsyncSession,
+        team_id: UUID,
         player_id_list: List[UUID],
         team_name: str,
     ) -> bool:
@@ -108,6 +108,7 @@ class UpdateData:
                 return False
 
             result.first_team_name = team_name
+            result.first_team_id = team_id
             result.first_team_player1_id = player_id_list[0]
             result.first_team_player2_id = player_id_list[1]
             if len(player_id_list) == 4:
@@ -128,6 +129,7 @@ class UpdateData:
     async def update_second_team(
         match_id: UUID,
         session: AsyncSession,
+        team_id: UUID,
         player_id_list: List[UUID],
         team_name: str,
     ) -> bool:
@@ -152,6 +154,7 @@ class UpdateData:
                 return False
 
             result.second_team_name = team_name
+            result.second_team_id = team_id
             result.second_team_player1_id = player_id_list[0]
             result.second_team_player2_id = player_id_list[1]
             if len(player_id_list) == 4:
@@ -317,26 +320,6 @@ class ReadData:
             logging.error(f"Failed to read match data: {e}")
             return None
 
-    @staticmethod
-    async def read_mix_doubles_end_setup(
-        match_id: UUID,
-        end_number: int,
-        session: AsyncSession,
-    ) -> MatchMixDoublesEndSetup | None:
-        """Read mixed doubles per-end setup row (selector + setup_done) for the given end."""
-        try:
-            stmt = select(MatchMixDoublesEndSetup).where(
-                MatchMixDoublesEndSetup.match_id == match_id,
-                MatchMixDoublesEndSetup.end_number == end_number,
-            )
-            result = await session.execute(stmt)
-            row = result.scalars().first()
-            if row is None:
-                return None
-            return row
-        except Exception as e:
-            logging.error(f"Failed to read mix doubles end setup: {e}")
-            return None
 
     @staticmethod
     async def read_state_data(state_id: UUID, session: AsyncSession) -> StateSchema | None:
@@ -742,6 +725,12 @@ class CreateData:
                     positioned_stones_pattern=md.positioned_stones_pattern,
                     team0_power_play_end=None,
                     team1_power_play_end=None,
+                    # Seed selector list (JSONB): end 0 selector defaults to the hammer team (second_team_id).
+                    end_setup_team_ids=(
+                        [str(x) for x in md.end_setup_team_ids]
+                        if getattr(md, "end_setup_team_ids", None)
+                        else [str(match.second_team_id)]
+                    ),
                 )
 
             items = [new_score, new_tournament, new_match]
@@ -755,29 +744,6 @@ class CreateData:
         except Exception as e:
             await session.rollback()
             logging.error(f"Failed to create match data: {e}")
-            return False
-
-    @staticmethod
-    async def create_mix_doubles_end_setup(
-        match_id: UUID,
-        end_number: int,
-        end_setup_team_id: UUID,
-        session: AsyncSession,
-    ) -> bool:
-        """Create a mixed doubles per-end setup row."""
-        try:
-            row = MatchMixDoublesEndSetup(
-                match_id=match_id,
-                end_number=end_number,
-                end_setup_team_id=end_setup_team_id,
-                setup_done=False,
-            )
-            session.add(row)
-            await session.commit()
-            return True
-        except Exception as e:
-            await session.rollback()
-            logging.error(f"Failed to create mix doubles end setup: {e}")
             return False
 
     @staticmethod

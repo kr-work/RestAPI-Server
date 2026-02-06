@@ -1,5 +1,5 @@
-from pydantic import BaseModel, Json
-from typing import Optional
+from pydantic import BaseModel, Json, Field
+from typing import Literal, Optional
 from uuid import UUID
 from datetime import datetime
 
@@ -98,6 +98,7 @@ class MatchMixDoublesSettingsSchema(BaseModel):
     positioned_stones_pattern: int
     team0_power_play_end: int | None = None
     team1_power_play_end: int | None = None
+    end_setup_team_ids: list[UUID] = Field(default_factory=list)
 
     class Config:
         from_attributes = True
@@ -127,7 +128,7 @@ class MatchDataSchema(BaseModel):
     applied_rule: int
     tournament_id: UUID
     match_name: str
-    game_mode: str = "standard"
+    game_mode: Literal["standard", "mix_doubles"] = "standard"
     created_at: datetime
     started_at: datetime
     score: Optional[ScoreSchema] = None

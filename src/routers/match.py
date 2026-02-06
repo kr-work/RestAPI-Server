@@ -15,7 +15,7 @@ from src.db import Session
 from src.services import match_db
 from src.models.dc_models import (
     ClientDataModel,
-    EndSetupRequestModel,
+    PositionedStonesModel,
     ShotInfoModel,
     TeamModel,
     MatchNameModel,
@@ -37,6 +37,12 @@ from src.models.basic_authentication_models import UserModel
 from src.converter import DataConverter
 from src.redis_subscriber import RedisSubscriber
 from src.score_utils import ScoreUtils
+from src.domain.match_rules import (
+    generate_reset_stone_coordinate_data,
+    stone_count_per_team,
+    total_shots_per_end as get_total_shots_per_end,
+)
+from src.services.simulation import simulate_fcv1
 from src.authentication.basic_authentication import BasicAuthentication
 from src.authentication.basic_authentication_crud import (
     CreateAuthentication,
@@ -46,9 +52,6 @@ from src.authentication.basic_authentication_crud import (
 from src.simulator import StoneSimulator
 
 redis = Redis(host="redis", port=6379, decode_responses=True, health_check_interval=30)
-
-MIX_DOUBLES_TOTAL_SHOTS_PER_END = 10
-STANDARD_TOTAL_SHOTS_PER_END = 16
 
 match_router = APIRouter()
 logging.basicConfig(level=logging.INFO)
@@ -63,53 +66,7 @@ basic_auth = BasicAuthentication()
 stone_simulator = StoneSimulator()
 
 
-def simulate_fcv1(
-    shot_info: ShotInfoModel,
-    state_data: StateSchema,
-    total_shot_number: int,
-    shot_per_team: int,
-    team_number: int,
-    applied_rule: int,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Stone simulation with fcv1 model
-
-    Args:
-        shot_info (ShotInfoModel): Adjusted shot information
-        state_data (StateSchema): The latest state data of the match
-        total_shot_number (int): Total number of shots
-        shot_per_team (int): Number of shots per team
-        team_number (int): Team"0" or Team"1"
-        applied_rule (int): 0: "five_rock_rule", 1: "no_tick_rule", 2: "modified_fgz" (mixed doubles)
-
-    Returns:
-        tuple[np.ndarray, np.ndarray]: Simulated stone coordinate, trajectory
-    """
-    velocity_x: np.float64 = shot_info.translational_velocity * np.cos(shot_info.shot_angle)
-    velocity_y: np.float64 = shot_info.translational_velocity * np.sin(shot_info.shot_angle)
-    stone_position = np.array(
-        [
-            coordinate
-            for team, stones in state_data.stone_coordinate.data.items()
-            for stone in stones
-            for coordinate in (stone["x"], stone["y"])
-        ]
-    )
-    spin_sign = 1 if shot_info.angular_velocity >= 0 else -1
-
-    simulated_stones_coordinate, trajectory = stone_simulator.simulator(
-        stone_position,
-        total_shot_number,
-        velocity_x,
-        velocity_y,
-        spin_sign,
-        team_number,
-        shot_per_team,
-        applied_rule,
-    )
-    return simulated_stones_coordinate, trajectory
-
-
-async def state_end_number_update(state_data: StateSchema, next_shot_team_id: UUID):
+async def state_end_number_update(state_data: StateSchema, next_shot_team_id: UUID | None):
     """Update the state data when the end number is updated
 
     Args:
@@ -120,13 +77,24 @@ async def state_end_number_update(state_data: StateSchema, next_shot_team_id: UU
     total_shot_number: int | None = 0
 
     # In mixed doubles, we wait for an explicit end-setup command before allowing shots.
-    match_data: MatchDataSchema = await match_db.read_match_data(state_data.match_id)
-    is_mix_doubles = match_data is not None and match_data.game_mode == GameModeModel.mix_doubles.value
+    match_data: MatchDataSchema | None = await match_db.read_match_data(state_data.match_id)
+    if match_data is None:
+        raise not_found("Match not found.")
+
+    is_mix_doubles = match_data.game_mode == GameModeModel.mix_doubles.value
     if is_mix_doubles:
         next_shot_team_id = None
         total_shot_number = None
+    elif next_shot_team_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="next_shot_team_id must not be None in standard mode.",
+        )
 
-    stone_coordinate: StoneCoordinateSchema = reset_stone_coordinate(match_data.game_mode)
+    stone_coordinate: StoneCoordinateSchema = StoneCoordinateSchema(
+        stone_coordinate_id=uuid7(),
+        data=generate_reset_stone_coordinate_data(match_data.game_mode),
+    )
 
     state = StateSchema(
         state_id=uuid7(),
@@ -158,42 +126,6 @@ async def state_end_number_update(state_data: StateSchema, next_shot_team_id: UU
             }
         ),
     )
-
-
-def reset_stone_coordinate(game_mode: str) -> StoneCoordinateSchema:
-    """Reset the stone coordinate data
-    This function is used when the end number is updated
-    Args:
-        None
-    Returns:
-        StoneCoordinateSchema: Reset the stone coordinate data
-    """
-    stone_coordinates_data: dict = {}
-    if game_mode == GameModeModel.standard:
-        stone_coordinates_data = {
-            "team0": [
-                [{"x": 0.0, "y": 0.0} for _ in range(8)],
-            ],
-            "team1": [
-                [{"x": 0.0, "y": 0.0} for _ in range(8)],
-            ],
-        }
-    elif game_mode == GameModeModel.mix_doubles:
-        stone_coordinates_data = {
-            "team0": [
-                [{"x": 0.0, "y": 0.0} for _ in range(6)],
-            ],
-            "team1": [
-                [{"x": 0.0, "y": 0.0} for _ in range(6)],
-            ],
-        }
-
-    stone_coordinate: StoneCoordinateSchema = StoneCoordinateSchema(
-        stone_coordinate_id=uuid7(),
-        data=stone_coordinates_data,
-    )
-    return stone_coordinate
-
 class BaseServer:
     """Endpoint class for initiating match."""
     @staticmethod
@@ -230,7 +162,6 @@ class BaseServer:
         simulator_id: UUID = None
         applied_rule_name: AppliedRuleModel = None
         applied_rule: int = None
-        stone_coordinates_data: dict = None
 
         simulator_id = await match_db.read_simulator_id(client_data.simulator.simulator_name)
         if simulator_id is None:
@@ -264,7 +195,10 @@ class BaseServer:
         team_score: List = [0] * (client_data.standard_end_count + 1)
 
         # Create stone coordinate data(all stones at (0,0))
-        stone_coordinate: StoneCoordinateSchema = reset_stone_coordinate(client_data.game_mode)
+        stone_coordinate: StoneCoordinateSchema = StoneCoordinateSchema(
+            stone_coordinate_id=uuid7(),
+            data=generate_reset_stone_coordinate_data(client_data.game_mode.value),
+        )
 
         state = StateSchema(
             state_id=uuid7(),
@@ -331,6 +265,8 @@ class BaseServer:
                     positioned_stones_pattern=int(client_data.positioned_stones_pattern),
                     team0_power_play_end=None,
                     team1_power_play_end=None,
+                    # Per rules: end 0 selector is the hammer team (team1 = second_team_id).
+                    end_setup_team_ids=[UUID(str("60e1e056-3613-4846-afc9-514ea7b6adde"))],
                 )
                 if client_data.game_mode == GameModeModel.mix_doubles
                 else None
@@ -344,12 +280,6 @@ class BaseServer:
 
         await match_db.create_match_data(match_data)
         await match_db.create_state_data(state)
-        if client_data.game_mode == GameModeModel.mix_doubles:
-            await match_db.create_mix_doubles_end_setup(
-                match_id=match_id,
-                end_number=0,
-                end_setup_team_id=UUID(str("5050f20f-cf97-4fb1-bbc1-f2c9052e0d17")),
-            )
 
         return match_id
 
@@ -358,6 +288,10 @@ class DCServer:
     """A server class that provides the main API endpoints for the entire match,
     including match initiation and state management.
     """
+
+    # ==============================================================================
+    # ==== Standard & Mixed doubles EndPoint =======================================
+    # ==============================================================================
 
     @staticmethod
     @match_router.post("/store-team-config")
@@ -470,13 +404,30 @@ class DCServer:
         # Mixed doubles uses only 2 players, so player_id_list has length 2.
         # CRUD writes player3/player4 slots as NULL in match_data.
         if match_team_name == "team0":
-            await match_db.update_first_team(match_id, player_id_list, team_config_data.team_name)
+            await match_db.update_first_team(match_id, team_id, player_id_list, team_config_data.team_name)
             # Standard: decide the initial next_shot_team at team0 config.
             # Mixed doubles: wait for an explicit end-setup command.
             if match_data is None or match_data.game_mode == GameModeModel.standard.value:
                 await match_db.update_next_shot_team(match_id, team_id)
         elif match_team_name == "team1":
-            await match_db.update_second_team(match_id, player_id_list, team_config_data.team_name)
+            await match_db.update_second_team(match_id, team_id, player_id_list, team_config_data.team_name)
+
+            # Mixed doubles rule: end 0 positioned-stones selector is the hammer team (team1 / second_team).
+            # If team1 registers as a different team_id, reflect it into end_setup_team_ids[0]
+            # as long as the match hasn't started the first end yet.
+            if is_mix_doubles:
+                latest_state = await match_db.read_latest_state_data(match_id)
+                if (
+                    latest_state is not None
+                    and latest_state.end_number == 0
+                    and latest_state.next_shot_team_id is None
+                    and latest_state.total_shot_number is None
+                ):
+                    await match_db.set_end_setup_team_for_end(
+                        match_id=match_id,
+                        end_number=0,
+                        selector_team_id=team_id,
+                    )
 
         # Signal team-config completion via Redis to avoid DB polling in SSE subscribers.
         # We publish only after team info has been written successfully.
@@ -526,6 +477,12 @@ class DCServer:
         Args:
             match_id (UUID): match_id
         """
+        # Viewer has no authentication, so validate the match exists up-front.
+        # Otherwise the SSE generator may raise and immediately disconnect.
+        match_data = await match_db.read_match_data(match_id)
+        if match_data is None:
+            raise not_found("Match not found.")
+
         channel: str = f"match:{match_id}"
         redis_subscriber = RedisSubscriber(Session, match_id, "viewer")
 
@@ -535,69 +492,6 @@ class DCServer:
             headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
         )
 
-
-    # ==============================================================================
-    # ==== Mixed doubles 専用エンドポイント =========================================
-    # ==============================================================================
-    @staticmethod
-    @match_router.post("/matches/{match_id}/end-setup")
-    async def end_setup(
-        match_id: UUID,
-        request: EndSetupRequestModel,
-        user_data: UserModel = Depends(basic_auth.check_user_data),
-    ) -> None:
-        """Mixed doubles: decide throw order (and optional power play), then place pre-positioned stones."""
-        # ==== Auth (match binding) ====
-        match_team_name: str = await basic_auth.check_match_data(user_data, match_id)
-
-        # ==== Load state ====
-        match_data: MatchDataSchema | None = await match_db.read_match_data(match_id)
-        latest_state: StateSchema | None = await match_db.read_latest_state_data(match_id)
-
-        # ==== Guard checks ====
-        if match_data is None or latest_state is None:
-            raise not_found("Match not found.")
-
-        if match_data.game_mode != GameModeModel.mix_doubles.value:
-            raise bad_request("end-setup is only for mix_doubles.")
-
-        if match_data.mix_doubles_settings is None:
-            raise conflict("Mixed doubles settings missing.")
-
-        if latest_state.winner_team_id is not None:
-            raise conflict("Match already finished.")
-
-        if latest_state.total_shot_number not in (None, 0):
-            raise conflict("End already started.")
-
-        # ==== Execute end-setup ====
-        try:
-            setup_state_id = await match_db.perform_mix_doubles_end_setup(
-                match_data=match_data,
-                latest_state=latest_state,
-                match_team_name=match_team_name,
-                request=request,
-            )
-        except ValueError as e:
-            message = str(e)
-            if "only be used" in message:
-                raise bad_request(message)
-            raise conflict(message)
-
-        await redis.publish(
-            f"match:{match_id}",
-            json.dumps(
-                {
-                    "type": "state_update",
-                    "match_id": str(match_id),
-                    "state_id": str(setup_state_id),
-                }
-            ),
-        )
-        
-    # ==============================================================================
-    # ==== Standard & Mixed doubles =========================================
-    # ==============================================================================
     @staticmethod
     @match_router.post("/shots")
     async def receive_shot_info(
@@ -734,12 +628,13 @@ class DCServer:
 
         # Simulate the stone
         simulated_stones_coordinate, trajectory = simulate_fcv1(
-            dist_shot_info,
-            pre_state_data,
-            total_shot_number,
-            shot_per_team,
-            team_number,
-            match_data.applied_rule,
+            shot_info=dist_shot_info,
+            state_data=pre_state_data,
+            total_shot_number=total_shot_number,
+            shot_per_team=shot_per_team,
+            team_number=team_number,
+            applied_rule=match_data.applied_rule,
+            stone_simulator=stone_simulator,
         )
 
         # Update the total shot number and shot per team
@@ -766,20 +661,23 @@ class DCServer:
             angular_velocity=shot_info.angular_velocity,
         )
 
+        # Count of stones depends on game mode(standard: 8, mix_doubles: 6)
+        stone_count = stone_count_per_team(match_data.game_mode)
+
         stone_coordinate = {
             "team0": [
                 {
                     "x": simulated_stones_coordinate[0][i][0],
                     "y": simulated_stones_coordinate[0][i][1],
                 }
-                for i in range(8)
+                for i in range(stone_count)
             ],
             "team1": [
                 {
                     "x": simulated_stones_coordinate[1][i][0],
                     "y": simulated_stones_coordinate[1][i][1],
                 }
-                for i in range(8)
+                for i in range(stone_count)
             ],
         }
         stone_coordinate_data: StoneCoordinateSchema = StoneCoordinateSchema(
@@ -788,11 +686,7 @@ class DCServer:
         )
 
         # total_shots_per_end depends on game mode(standard: 16, mix_doubles: 10)
-        total_shots_per_end = (
-            MIX_DOUBLES_TOTAL_SHOTS_PER_END
-            if match_data.game_mode == GameModeModel.mix_doubles.value
-            else STANDARD_TOTAL_SHOTS_PER_END
-        )
+        total_shots_per_end = get_total_shots_per_end(match_data.game_mode)
 
         # The shot is the last shot of the "end"
         if total_shot_number == total_shots_per_end:
@@ -802,13 +696,13 @@ class DCServer:
             team1_score: List = pre_score_data.team1
 
             team0_stones_position = [
-                (stone[0], stone[1]) for stone in simulated_stones_coordinate[0]
+                (stone[0], stone[1]) for stone in simulated_stones_coordinate[0][:stone_count]
             ]
             team1_stones_position = [
-                (stone[0], stone[1]) for stone in simulated_stones_coordinate[1]
+                (stone[0], stone[1]) for stone in simulated_stones_coordinate[1][:stone_count]
             ]
             distance_list: List = []
-            for i in range(8):
+            for i in range(stone_count):
                 distance_list.append(
                     score_utils.get_distance(
                         0, team0_stones_position[i][0], team0_stones_position[i][1]
@@ -829,12 +723,17 @@ class DCServer:
 
             # Mixed doubles: update which team has positioned-stones selection right for the next end.
             if match_data.game_mode == GameModeModel.mix_doubles.value:
-                current_end_setup = await match_db.read_mix_doubles_end_setup(
-                    match_id=match_id,
-                    end_number=end_number,
-                )
+                current_selector = None
+                if (
+                    match_data.mix_doubles_settings is not None
+                    and getattr(match_data.mix_doubles_settings, "end_setup_team_ids", None) is not None
+                ):
+                    ids = match_data.mix_doubles_settings.end_setup_team_ids
+                    if isinstance(ids, list) and 0 <= int(end_number) < len(ids):
+                        current_selector = ids[int(end_number)]
 
-                current_selector = current_end_setup.end_setup_team_id if current_end_setup is not None else None
+                if current_selector is None:
+                    current_selector = match_data.second_team_id
 
                 if scored_team == 0:
                     next_selector = match_data.second_team_id
@@ -853,10 +752,10 @@ class DCServer:
                         )
 
                 next_end_number = end_number + 1
-                await match_db.upsert_next_end_setup_selector(
+                await match_db.set_end_setup_team_for_end(
                     match_id=match_id,
-                    next_end_number=next_end_number,
-                    next_selector_team_id=next_selector,
+                    end_number=next_end_number,
+                    selector_team_id=next_selector,
                 )
 
             if end_number < match_data.standard_end_count:
@@ -937,3 +836,61 @@ class DCServer:
 
         if total_shot_number == total_shots_per_end and winner_team_id is None:
             await state_end_number_update(state_data, next_end_first_shot_team_id)
+
+
+    # ==============================================================================
+    # ==== Only Mixed doubles EndPoint =============================================
+    # ==============================================================================
+    @staticmethod
+    @match_router.post("/matches/{match_id}/end-setup")
+    async def end_setup(
+        match_id: UUID,
+        request: PositionedStonesModel,
+        user_data: UserModel = Depends(basic_auth.check_user_data),
+    ) -> None:
+        """Mixed doubles: decide throw order (and optional power play), then place pre-positioned stones."""
+        match_team_name: str = await basic_auth.check_match_data(user_data, match_id)
+
+        match_data: MatchDataSchema | None = await match_db.read_match_data(match_id)
+        latest_state: StateSchema | None = await match_db.read_latest_state_data(match_id)
+
+        if match_data is None or latest_state is None:
+            raise not_found("Match not found.")
+
+        if match_data.game_mode != GameModeModel.mix_doubles.value:
+            raise bad_request("end-setup is only for mix_doubles.")
+
+        if match_data.mix_doubles_settings is None:
+            raise conflict("Mixed doubles settings missing.")
+
+        if latest_state.winner_team_id is not None:
+            raise conflict("Match already finished.")
+
+        # Pre-end setup state is encoded as next_shot_team_id=None and total_shot_number=None.
+        # After setup we create a new state with total_shot_number=0 and next_shot_team_id set.
+        if latest_state.next_shot_team_id is not None or latest_state.total_shot_number is not None:
+            raise conflict("End already started.")
+
+        try:
+            setup_state_id = await match_db.perform_mix_doubles_end_setup(
+                match_data=match_data,
+                latest_state=latest_state,
+                match_team_name=match_team_name,
+                request=request,
+            )
+        except ValueError as e:
+            message = str(e)
+            if "only be used" in message:
+                raise bad_request(message)
+            raise conflict(message)
+
+        await redis.publish(
+            f"match:{match_id}",
+            json.dumps(
+                {
+                    "type": "state_update",
+                    "match_id": str(match_id),
+                    "state_id": str(setup_state_id),
+                }
+            ),
+        )

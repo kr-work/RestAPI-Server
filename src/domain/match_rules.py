@@ -8,21 +8,8 @@ Rule of thumb:
 - Not OK: touching DB sessions, Redis, FastAPI, datetime.now(), etc.
 """
 
-# ==============================================================================
-# ==== Common (shared across modes) ============================================
-# ==============================================================================
-
-
-# ==============================================================================
-# ==== Standard only ===========================================================
-# ==============================================================================
-
-
-# ==============================================================================
-# ==== Mixed doubles only ======================================================
-# ==============================================================================
-# ==== Positioned stones =======================================================
-# NOTE: power play coordinates are defined for the RIGHT side; LEFT side flips x.
+MIX_DOUBLES_TOTAL_SHOTS_PER_END = 10
+STANDARD_TOTAL_SHOTS_PER_END = 16
 
 MD_POSITIONED_STONE_IN_HOUSE = (0.0, 38.870)
 MD_POWER_PLAY_IN_HOUSE = (1.219, 38.260)
@@ -47,10 +34,54 @@ MD_POWER_PLAY_GUARD = [
 ]
 
 
+def stone_count_per_team(game_mode: str) -> int:
+    """Return stone count per team for the given mode."""
+    if game_mode == "mix_doubles":
+        return 6
+    return 8
+
+
+def total_shots_per_end(game_mode: str) -> int:
+    """Return total shots per end for the given mode."""
+    if game_mode == "mix_doubles":
+        return MIX_DOUBLES_TOTAL_SHOTS_PER_END
+    return STANDARD_TOTAL_SHOTS_PER_END
+
+
+def generate_reset_stone_coordinate_data(game_mode: str) -> dict:
+    """Generate initial stone coordinate dict for a new end.
+
+    Returns a dict compatible with StoneCoordinateSchema.data.
+    """
+    count = stone_count_per_team(game_mode)
+    return {
+        "team0": [{"x": 0.0, "y": 0.0} for _ in range(count)],
+        "team1": [{"x": 0.0, "y": 0.0} for _ in range(count)],
+    }
+
+# ==============================================================================
+# ==== Common (shared across modes) ============================================
+# ==============================================================================
+
+
+# ==============================================================================
+# ==== Standard only ===========================================================
+# ==============================================================================
+
+
+# ==============================================================================
+# ==== Mixed doubles only ======================================================
+# ==============================================================================
+# ==== Positioned stones =======================================================
+# NOTE: power play coordinates are defined for the RIGHT side; LEFT side flips x.
+
+
 def generate_mixed_doubles_initial_stones(
     hammer_team_name: str,
     power_play_side: str | None,
     positioned_stones_pattern: int,
+    *,
+    hammer_stone_position: str = "guard",
 ) -> dict:
     """Generate initial pre-positioned stones for mixed doubles.
 
@@ -85,8 +116,16 @@ def generate_mixed_doubles_initial_stones(
         house_x, house_y = MD_POSITIONED_STONE_IN_HOUSE
         guard_x, guard_y = MD_POSITIONED_STONE_GUARD[positioned_stones_pattern]
 
-    # Place one stone in the house for the non-hammer team,
+    if hammer_stone_position not in ("guard", "house"):
+        raise ValueError("hammer_stone_position must be 'guard' or 'house'")
+
+    # By default, place one stone in the house for the non-hammer team,
     # and one guard stone for the hammer team.
-    data[non_hammer_team_name][0] = {"x": float(house_x), "y": float(house_y)}
-    data[hammer_team_name][0] = {"x": float(guard_x), "y": float(guard_y)}
+    if hammer_stone_position == "guard":
+        data[non_hammer_team_name][0] = {"x": float(house_x), "y": float(house_y)}
+        data[hammer_team_name][0] = {"x": float(guard_x), "y": float(guard_y)}
+    else:
+        # Swap: hammer gets the house stone, non-hammer gets the guard.
+        data[hammer_team_name][0] = {"x": float(house_x), "y": float(house_y)}
+        data[non_hammer_team_name][0] = {"x": float(guard_x), "y": float(guard_y)}
     return data

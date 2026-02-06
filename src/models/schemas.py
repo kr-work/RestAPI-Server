@@ -1,7 +1,7 @@
 from sqlalchemy.orm import DeclarativeBase, relationship
 from sqlalchemy import ForeignKey
 from sqlalchemy.schema import Column
-from sqlalchemy.types import Integer, String, Uuid, Float, DateTime, TEXT, Boolean
+from sqlalchemy.types import Integer, String, Uuid, Float, DateTime, Boolean
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from uuid import uuid4
 from uuid6 import uuid7
@@ -38,7 +38,7 @@ class Match(Base):
     physical_simulator_id = Column(Uuid, default=uuid4)
     tournament_id = Column(Uuid, default=uuid7)
     match_name = Column(String)
-    game_mode = Column(String, default="standard")
+    game_mode = Column(String(32), nullable=False, default="standard")
     created_at = Column(DateTime, default=datetime.now)
     started_at = Column(DateTime, default=datetime.now)
 
@@ -124,12 +124,6 @@ class Match(Base):
         uselist=False,
     )
 
-    mix_doubles_end_setups = relationship(
-        "MatchMixDoublesEndSetup",
-        primaryjoin="Match.match_id == foreign(MatchMixDoublesEndSetup.match_id)",
-        back_populates="match",
-        cascade="all, delete",
-    )
 
 
 class MatchMixDoublesSettings(Base):
@@ -139,26 +133,14 @@ class MatchMixDoublesSettings(Base):
     positioned_stones_pattern = Column(Integer, nullable=False)
     team0_power_play_end = Column(Integer, nullable=True)
     team1_power_play_end = Column(Integer, nullable=True)
+    # Per-end selector (hammer) team_id list stored as UUID strings.
+    # Index corresponds to end_number.
+    end_setup_team_ids = Column(JSONB, nullable=False, default=list)
 
     match = relationship(
         "Match",
         primaryjoin="foreign(MatchMixDoublesSettings.match_id) == Match.match_id",
         back_populates="mix_doubles_settings",
-    )
-
-
-class MatchMixDoublesEndSetup(Base):
-    __tablename__ = "match_mix_doubles_end_setup"
-
-    match_id = Column(Uuid, ForeignKey("match_data.match_id", ondelete="CASCADE"), primary_key=True)
-    end_number = Column(Integer, primary_key=True)
-    end_setup_team_id = Column(Uuid, nullable=False)
-    setup_done = Column(Boolean, default=False, nullable=False)
-
-    match = relationship(
-        "Match",
-        primaryjoin="foreign(MatchMixDoublesEndSetup.match_id) == Match.match_id",
-        back_populates="mix_doubles_end_setups",
     )
 
 
@@ -318,7 +300,7 @@ class Trajectory(Base):
     __tablename__ = "trajectory"
     trajectory_id = Column(Uuid, primary_key=True, default=uuid7)
     trajectory_data = Column(JSONB)
-    data_format_version = Column(TEXT)
+    data_format_version = Column(String(32))
 
 
 class Player(Base):

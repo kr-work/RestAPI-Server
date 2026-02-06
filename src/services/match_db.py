@@ -13,7 +13,7 @@ from sqlalchemy import select
 from src.crud import CreateData, ReadData, UpdateData
 from src.db import Session
 from src.domain.match_rules import generate_mixed_doubles_initial_stones
-from src.models.dc_models import EndSetupRequestModel
+from src.models.dc_models import PositionedStonesModel
 from src.models.schema_models import (
     MatchDataSchema,
     PlayerSchema,
@@ -21,7 +21,7 @@ from src.models.schema_models import (
     StateSchema,
     StoneCoordinateSchema,
 )
-from src.models.schemas import MatchMixDoublesEndSetup, MatchMixDoublesSettings
+from src.models.schemas import MatchMixDoublesSettings
 from uuid6 import uuid7
 
 
@@ -55,11 +55,6 @@ async def read_player_id(player_name: str, team_id: UUID) -> UUID | None:
         return await ReadData.read_player_id(player_name, team_id, session)
 
 
-async def read_mix_doubles_end_setup(match_id: UUID, end_number: int) -> MatchMixDoublesEndSetup | None:
-    async with Session() as session:
-        return await ReadData.read_mix_doubles_end_setup(match_id, end_number, session)
-
-
 async def create_match_data(match_data: MatchDataSchema) -> None:
     async with Session() as session:
         success = await CreateData.create_match_data(match_data, session)
@@ -79,18 +74,6 @@ async def create_player_data(player: PlayerSchema) -> None:
         success = await CreateData.create_player_data(player, session)
         if not success:
             raise RuntimeError("Failed to create player data")
-
-
-async def create_mix_doubles_end_setup(match_id: UUID, end_number: int, end_setup_team_id: UUID) -> None:
-    async with Session() as session:
-        success = await CreateData.create_mix_doubles_end_setup(
-            match_id=match_id,
-            end_number=end_number,
-            end_setup_team_id=end_setup_team_id,
-            session=session,
-        )
-        if not success:
-            raise RuntimeError("Failed to create mix doubles end setup")
 
 
 async def record_shot_result(
@@ -121,14 +104,14 @@ async def update_match_data_with_team_name(
         )
 
 
-async def update_first_team(match_id: UUID, player_id_list: list[UUID], team_name: str) -> None:
+async def update_first_team(match_id: UUID, team_id: UUID, player_id_list: list[UUID], team_name: str) -> None:
     async with Session() as session:
-        await UpdateData.update_first_team(match_id, session, player_id_list, team_name)
+        await UpdateData.update_first_team(match_id, session, team_id, player_id_list, team_name)
 
 
-async def update_second_team(match_id: UUID, player_id_list: list[UUID], team_name: str) -> None:
+async def update_second_team(match_id: UUID, team_id: UUID, player_id_list: list[UUID], team_name: str) -> None:
     async with Session() as session:
-        await UpdateData.update_second_team(match_id, session, player_id_list, team_name)
+        await UpdateData.update_second_team(match_id, session, team_id, player_id_list, team_name)
 
 
 async def update_next_shot_team(match_id: UUID, team_id: UUID) -> None:
@@ -145,7 +128,7 @@ async def perform_mix_doubles_end_setup(
     match_data: MatchDataSchema,
     latest_state: StateSchema,
     match_team_name: str,
-    request: EndSetupRequestModel,
+    request: PositionedStonesModel,
 ) -> UUID:
     """DB-backed end-setup (transactional). Router should handle auth and redis publish."""
 
@@ -160,81 +143,78 @@ async def perform_mix_doubles_end_setup(
             caller_team_name = match_team_name
             other_team_name = "team1" if caller_team_name == "team0" else "team0"
 
+            # Lock settings row to read/update power play usage and selector list.
             stmt = (
-                select(MatchMixDoublesEndSetup)
-                .where(
-                    MatchMixDoublesEndSetup.match_id == match_data.match_id,
-                    MatchMixDoublesEndSetup.end_number == latest_state.end_number,
-                )
+                select(MatchMixDoublesSettings)
+                .where(MatchMixDoublesSettings.match_id == match_data.match_id)
                 .with_for_update()
             )
             result = await session.execute(stmt)
-            end_setup_row = result.scalars().first()
+            settings_row = result.scalars().first()
+            if settings_row is None:
+                raise RuntimeError("Mixed doubles settings row not found.")
 
-            if end_setup_row is None:
-                end_setup_row = MatchMixDoublesEndSetup(
-                    match_id=match_data.match_id,
-                    end_number=latest_state.end_number,
-                    end_setup_team_id=match_data.first_team_id,
-                    setup_done=False,
-                )
-                session.add(end_setup_row)
-                await session.flush()
+            selector_list = settings_row.end_setup_team_ids or []
+            # Seed list if missing (shouldn't happen in fresh DB).
+            if not selector_list:
+                selector_list = [str(match_data.second_team_id)]
+                settings_row.end_setup_team_ids = selector_list
 
-            if end_setup_row.setup_done:
-                raise ValueError("End setup already completed.")
+            if latest_state.end_number >= len(selector_list):
+                raise RuntimeError("end_setup_team_ids is missing entries for current end.")
 
-            if caller_team_id != end_setup_row.end_setup_team_id:
+            expected_selector_team_id = UUID(str(selector_list[int(latest_state.end_number)]))
+            if caller_team_id != expected_selector_team_id:
                 raise ValueError("Not your turn to setup positioned stones.")
 
-            power_play_side: str | None = request.power_play_side
+            # API input is a single enum. We derive power play side and whether to swap
+            # which team gets the house/guard stone. The end_setup_team is treated as the
+            # hammer team for the end (throws second).
+            if request == PositionedStonesModel.pp_left:
+                power_play_side = "left"
+                hammer_stone_position = "guard"
+            elif request == PositionedStonesModel.pp_right:
+                power_play_side = "right"
+                hammer_stone_position = "guard"
+            elif request == PositionedStonesModel.center_house:
+                power_play_side = None
+                hammer_stone_position = "house"
+            else:
+                # PositionedStonesModel.center_guard
+                power_play_side = None
+                hammer_stone_position = "guard"
+
             power_play_requested = power_play_side in ("left", "right")
 
-            if request.selector_throws_first and power_play_requested:
-                raise ValueError("power_play_side can only be used when selector_throws_first is false.")
-
-            if request.selector_throws_first:
-                first_throw_team_id = caller_team_id
-                hammer_team_name = other_team_name
-            else:
-                first_throw_team_id = other_team_id
-                hammer_team_name = caller_team_name
+            first_throw_team_id = other_team_id
+            hammer_team_name = caller_team_name
 
             if power_play_requested:
                 used_end = (
-                    match_data.mix_doubles_settings.team0_power_play_end
+                    settings_row.team0_power_play_end
                     if caller_team_name == "team0"
-                    else match_data.mix_doubles_settings.team1_power_play_end
+                    else settings_row.team1_power_play_end
                 )
                 if used_end is not None:
                     raise ValueError("Power play already used.")
 
-                stmt = (
-                    select(MatchMixDoublesSettings)
-                    .where(MatchMixDoublesSettings.match_id == match_data.match_id)
-                    .with_for_update()
-                )
-                result = await session.execute(stmt)
-                settings_row = result.scalars().first()
-                if settings_row is not None:
-                    if caller_team_name == "team0":
-                        settings_row.team0_power_play_end = int(latest_state.end_number)
-                    else:
-                        settings_row.team1_power_play_end = int(latest_state.end_number)
+                if caller_team_name == "team0":
+                    settings_row.team0_power_play_end = int(latest_state.end_number)
+                else:
+                    settings_row.team1_power_play_end = int(latest_state.end_number)
 
             pattern = int(match_data.mix_doubles_settings.positioned_stones_pattern)
             stone_data = generate_mixed_doubles_initial_stones(
                 hammer_team_name,
                 power_play_side,
                 pattern,
+                hammer_stone_position=hammer_stone_position,
             )
 
             stone_coordinate = StoneCoordinateSchema(
                 stone_coordinate_id=uuid7(),
                 data=stone_data,
             )
-
-            end_setup_row.setup_done = True
 
             setup_state = StateSchema(
                 state_id=uuid7(),
@@ -259,27 +239,41 @@ async def perform_mix_doubles_end_setup(
             return setup_state.state_id
 
 
-async def upsert_next_end_setup_selector(
+async def set_end_setup_team_for_end(
+    *,
     match_id: UUID,
-    next_end_number: int,
-    next_selector_team_id: UUID,
+    end_number: int,
+    selector_team_id: UUID,
 ) -> None:
+    """Persist the selector (hammer) team for the given end_number.
+
+    Stored as a JSONB list on match_mix_doubles_settings.end_setup_team_ids.
+    """
     async with Session() as session:
-        stmt = select(MatchMixDoublesEndSetup).where(
-            MatchMixDoublesEndSetup.match_id == match_id,
-            MatchMixDoublesEndSetup.end_number == next_end_number,
-        )
-        result = await session.execute(stmt)
-        row = result.scalars().first()
-        if row is None:
-            row = MatchMixDoublesEndSetup(
-                match_id=match_id,
-                end_number=next_end_number,
-                end_setup_team_id=next_selector_team_id,
-                setup_done=False,
+        async with session.begin():
+            stmt = (
+                select(MatchMixDoublesSettings)
+                .where(MatchMixDoublesSettings.match_id == match_id)
+                .with_for_update()
             )
-            session.add(row)
-        else:
-            row.end_setup_team_id = next_selector_team_id
-            row.setup_done = False
-        await session.commit()
+            result = await session.execute(stmt)
+            settings_row = result.scalars().first()
+            if settings_row is None:
+                raise RuntimeError("Mixed doubles settings row not found.")
+
+            selector_list = settings_row.end_setup_team_ids or []
+            if not selector_list:
+                # Seed end 0 if missing.
+                selector_list = [str(selector_team_id)]
+
+            if end_number < 0:
+                raise ValueError("end_number must be >= 0")
+
+            if end_number < len(selector_list):
+                selector_list[end_number] = str(selector_team_id)
+            elif end_number == len(selector_list):
+                selector_list.append(str(selector_team_id))
+            else:
+                raise RuntimeError("end_setup_team_ids has a gap; cannot set future end without previous entries.")
+
+            settings_row.end_setup_team_ids = selector_list

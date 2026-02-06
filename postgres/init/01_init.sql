@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS stone_coordinate (
 CREATE TABLE IF NOT EXISTS trajectory (
     trajectory_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     trajectory_data JSONB,
-    data_format_version TEXT
+  data_format_version VARCHAR(32)
 );
 
 -- Player
@@ -72,17 +72,23 @@ CREATE TABLE IF NOT EXISTS match_data (
     physical_simulator_id UUID DEFAULT gen_random_uuid(),
     tournament_id UUID DEFAULT gen_random_uuid(),
     match_name VARCHAR,
-    game_mode TEXT DEFAULT 'standard',
+    game_mode VARCHAR(32) NOT NULL DEFAULT 'standard',
     created_at TIMESTAMP DEFAULT NOW(),
     started_at TIMESTAMP DEFAULT NOW()
 );
+
+ALTER TABLE match_data
+  ADD CONSTRAINT chk_match_game_mode
+    CHECK (game_mode IN ('standard', 'mix_doubles'));
 
 -- Mixed Doubles Settings (only exists for game_mode='mix_doubles')
 CREATE TABLE IF NOT EXISTS match_mix_doubles_settings (
     match_id UUID PRIMARY KEY,
   positioned_stones_pattern INTEGER NOT NULL,
     team0_power_play_end INTEGER NULL,
-    team1_power_play_end INTEGER NULL
+    team1_power_play_end INTEGER NULL,
+    -- Per-end selector(hammer) team_id list. Index corresponds to end_number.
+    end_setup_team_ids JSONB NOT NULL DEFAULT '[]'::jsonb
 );
 
 ALTER TABLE match_mix_doubles_settings
@@ -95,15 +101,6 @@ ALTER TABLE match_mix_doubles_settings
       (team0_power_play_end IS NULL OR team0_power_play_end >= 0)
       AND (team1_power_play_end IS NULL OR team1_power_play_end >= 0)
     );
-
--- Mixed Doubles End Setup (per end; controls who can run end-setup in the current end)
-CREATE TABLE IF NOT EXISTS match_mix_doubles_end_setup (
-    match_id UUID NOT NULL,
-    end_number INTEGER NOT NULL,
-    end_setup_team_id UUID NOT NULL,
-    setup_done BOOLEAN NOT NULL DEFAULT FALSE,
-    PRIMARY KEY(match_id, end_number)
-);
 
 -- ShotInfo
 CREATE TABLE IF NOT EXISTS shot_info (
@@ -176,9 +173,4 @@ ALTER TABLE state
 -- match_mix_doubles_settings → match_data
 ALTER TABLE match_mix_doubles_settings
   ADD CONSTRAINT fk_md_settings_match
-    FOREIGN KEY(match_id) REFERENCES match_data(match_id) ON DELETE CASCADE;
-
--- match_mix_doubles_end_setup → match_data
-ALTER TABLE match_mix_doubles_end_setup
-  ADD CONSTRAINT fk_md_end_setup_match
     FOREIGN KEY(match_id) REFERENCES match_data(match_id) ON DELETE CASCADE;
