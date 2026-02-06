@@ -1,5 +1,4 @@
 # import database
-import json
 import logging
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +18,8 @@ from src.models.schema_models import (
 )
 from src.models.schemas import (
     Match,
+    MatchMixDoublesSettings,
+    MatchMixDoublesEndSetup,
     Score,
     State,
     StoneCoordinate,
@@ -85,7 +86,7 @@ class UpdateData:
         session: AsyncSession,
         player_id_list: List[UUID],
         team_name: str,
-    ):
+    ) -> bool:
         """Update match table with first team data
 
         Args:
@@ -102,15 +103,26 @@ class UpdateData:
             if result is None:
                 return False
 
+            if len(player_id_list) not in (2, 4):
+                logging.error("Invalid player_id_list length for first team: %s", len(player_id_list))
+                return False
+
             result.first_team_name = team_name
             result.first_team_player1_id = player_id_list[0]
             result.first_team_player2_id = player_id_list[1]
-            result.first_team_player3_id = player_id_list[2]
-            result.first_team_player4_id = player_id_list[3]
+            if len(player_id_list) == 4:
+                result.first_team_player3_id = player_id_list[2]
+                result.first_team_player4_id = player_id_list[3]
+            else:
+                # Mixed doubles: only 2 players. Keep slots 3/4 NULL.
+                result.first_team_player3_id = None
+                result.first_team_player4_id = None
             await session.commit()
+            return True
         except Exception as e:
             await session.rollback()
             logging.error(f"Failed to update first team data: {e}")
+            return False
 
     @staticmethod
     async def update_second_team(
@@ -118,7 +130,7 @@ class UpdateData:
         session: AsyncSession,
         player_id_list: List[UUID],
         team_name: str,
-    ):
+    ) -> bool:
         """Update match table with second team data
 
         Args:
@@ -135,18 +147,29 @@ class UpdateData:
             if result is None:
                 return False
 
+            if len(player_id_list) not in (2, 4):
+                logging.error("Invalid player_id_list length for second team: %s", len(player_id_list))
+                return False
+
             result.second_team_name = team_name
             result.second_team_player1_id = player_id_list[0]
             result.second_team_player2_id = player_id_list[1]
-            result.second_team_player3_id = player_id_list[2]
-            result.second_team_player4_id = player_id_list[3]
+            if len(player_id_list) == 4:
+                result.second_team_player3_id = player_id_list[2]
+                result.second_team_player4_id = player_id_list[3]
+            else:
+                # Mixed doubles: only 2 players. Keep slots 3/4 NULL.
+                result.second_team_player3_id = None
+                result.second_team_player4_id = None
             await session.commit()
+            return True
         except Exception as e:
             await session.rollback()
             logging.error(f"Failed to update second team data: {e}")
+            return False
 
     @staticmethod
-    async def update_created_at_state_data(state_id: UUID, session: AsyncSession):
+    async def update_created_at_state_data(state_id: UUID, session: AsyncSession) -> bool:
         """Update state table with created_at data
         Args:
             state_id (UUID): To identify the state
@@ -160,14 +183,16 @@ class UpdateData:
                 return False
             result.created_at = datetime.now()
             await session.commit()
+            return True
         except Exception as e:
             await session.rollback()
             logging.error(f"Failed to update created_at state data: {e}")
+            return False
 
     @staticmethod
     async def update_next_shot_team(
         match_id: UUID, next_shot_team: UUID, session: AsyncSession
-    ):
+    ) -> bool:
         """Update next shot team in State table
 
         Args:
@@ -190,12 +215,14 @@ class UpdateData:
 
             result.next_shot_team_id = next_shot_team
             await session.commit()
+            return True
         except Exception as e:
             await session.rollback()
             logging.error(f"Failed to update next shot team data: {e}")
+            return False
 
     @staticmethod
-    async def update_score(score: ScoreSchema, session: AsyncSession):
+    async def update_score(score: ScoreSchema, session: AsyncSession) -> bool:
         """Update score table with new score
 
         Args:
@@ -213,9 +240,11 @@ class UpdateData:
             result.team0 = score.team0
             result.team1 = score.team1
             await session.commit()
+            return True
         except Exception as e:
             await session.rollback()
             logging.error(f"Failed to update score data: {e}")
+            return False
 
     @staticmethod
     async def update_state_shot_id(state_id: UUID, shot_id: UUID, session: AsyncSession) -> bool:
@@ -235,6 +264,20 @@ class UpdateData:
             await session.rollback()
             logging.error(f"Failed to update state shot_id: {e}")
             return False
+
+    @staticmethod
+    async def set_state_shot_id_no_commit(state_id: UUID, shot_id: UUID, session: AsyncSession) -> None:
+        """Set State.shot_id without committing.
+
+        Intended for service-layer transactions (session.begin()).
+        """
+
+        stmt = select(State).where(State.state_id == state_id)
+        result = await session.execute(stmt)
+        row = result.scalars().first()
+        if row is None:
+            raise RuntimeError("State not found while linking shot_id.")
+        row.shot_id = shot_id
 
 
 class ReadData:
@@ -259,6 +302,7 @@ class ReadData:
                     joinedload(Match.score),
                     joinedload(Match.tournament),
                     joinedload(Match.simulator),
+                    joinedload(Match.mix_doubles_settings),
                 )
             )
             result = await session.execute(stmt)
@@ -274,7 +318,28 @@ class ReadData:
             return None
 
     @staticmethod
-    async def read_state_data(state_id: UUID, session: AsyncSession) -> StateSchema:
+    async def read_mix_doubles_end_setup(
+        match_id: UUID,
+        end_number: int,
+        session: AsyncSession,
+    ) -> MatchMixDoublesEndSetup | None:
+        """Read mixed doubles per-end setup row (selector + setup_done) for the given end."""
+        try:
+            stmt = select(MatchMixDoublesEndSetup).where(
+                MatchMixDoublesEndSetup.match_id == match_id,
+                MatchMixDoublesEndSetup.end_number == end_number,
+            )
+            result = await session.execute(stmt)
+            row = result.scalars().first()
+            if row is None:
+                return None
+            return row
+        except Exception as e:
+            logging.error(f"Failed to read mix doubles end setup: {e}")
+            return None
+
+    @staticmethod
+    async def read_state_data(state_id: UUID, session: AsyncSession) -> StateSchema | None:
         """Read specific state data and stone coordinate data from database
 
         Args:
@@ -287,7 +352,10 @@ class ReadData:
         try:
             stmt = (
                 select(State)
-                .options(joinedload(State.stone_coordinate))
+                .options(
+                    joinedload(State.stone_coordinate),
+                    joinedload(State.score),
+                )
                 .where(State.state_id == state_id)
             )
             result = await session.execute(stmt)
@@ -296,37 +364,15 @@ class ReadData:
             if result is None:
                 return None
 
-            stone_coordinate_data = None
-            if result.stone_coordinate:
-                stone_coordinate_data = StoneCoordinateSchema(
-                    stone_coordinate_id=result.stone_coordinate.stone_coordinate_id,
-                    data=result.stone_coordinate.data,
-                )
-
-            state_data = StateSchema(
-                state_id=result.state_id,
-                match_id=result.match_id,
-                end_number=result.end_number,
-                shot_number=result.shot_number,
-                total_shot_number=result.total_shot_number,
-                first_team_remaining_time=result.first_team_remaining_time,
-                second_team_remaining_time=result.second_team_remaining_time,
-                first_team_extra_end_remaining_time=result.first_team_extra_end_remaining_time,
-                second_team_extra_end_remaining_time=result.second_team_extra_end_remaining_time,
-                stone_coordinate_id=result.stone_coordinate_id,
-                shot_id=result.shot_id,
-                next_shot_team_id=result.next_shot_team_id,
-                created_at=result.created_at,
-                stone_coordinate=stone_coordinate_data,
-            )
-            return state_data
+            return StateSchema.model_validate(result)
         except Exception as e:
             logging.error(f"Failed to read state data: {e}")
+            return None
 
     @staticmethod
     async def read_latest_state_data(
         match_id: UUID, session: AsyncSession
-    ) -> StateSchema:
+    ) -> StateSchema | None:
         """Read the latest state data and stone coordinate data from database
 
         Args:
@@ -358,6 +404,7 @@ class ReadData:
 
         except Exception as e:
             logging.error(f"Failed to read latest state data: {e}")
+            return None
 
     @staticmethod
     async def read_state_data_in_end(
@@ -400,12 +447,12 @@ class ReadData:
 
         except Exception as e:
             logging.error(f"Failed to read state data in end: {e}")
-            return None
+            return []
 
     @staticmethod
     async def read_stone_data(
         stone_coordinate_id: UUID, session: AsyncSession
-    ) -> StoneCoordinateSchema:
+    ) -> StoneCoordinateSchema | None:
         """Read stone coordinate data from database
 
         Args:
@@ -432,9 +479,10 @@ class ReadData:
 
         except Exception as e:
             logging.error(f"Failed to read stone data: {e}")
+            return None
 
     @staticmethod
-    async def read_score_data(score_id: UUID, session: AsyncSession) -> ScoreSchema:
+    async def read_score_data(score_id: UUID, session: AsyncSession) -> ScoreSchema | None:
         """Read score data from database
 
         Args:
@@ -460,9 +508,10 @@ class ReadData:
             return score_data
         except Exception as e:
             logging.error(f"Failed to read score data: {e}")
+            return None
 
     @staticmethod
-    async def read_team_id(team_name: str, session: AsyncSession) -> UUID:
+    async def read_team_id(team_name: str, session: AsyncSession) -> UUID | None:
         """Read team id data from database
         Args:
             team_name (str): To identify the team name
@@ -488,9 +537,10 @@ class ReadData:
             )
             result = await session.execute(stmt)
             result = result.scalars().first()
-            match_data = MatchDataSchema.model_validate(result)
             if result is None:
                 return None
+
+            match_data = MatchDataSchema.model_validate(result)
 
             if match_data.first_team_name == team_name:
                 return match_data.first_team_id
@@ -531,7 +581,7 @@ class ReadData:
             logging.error(f"Failed to read player id data: {e}")
 
     @staticmethod
-    async def read_player_data(player_id: UUID, session: AsyncSession) -> PlayerSchema:
+    async def read_player_data(player_id: UUID, session: AsyncSession) -> PlayerSchema | None:
         """Read player data from database
 
         Args:
@@ -555,9 +605,10 @@ class ReadData:
 
         except Exception as e:
             logging.error(f"Failed to read player data: {e}")
+            return None
 
     @staticmethod
-    async def read_simulator_name(match_id: UUID, session: AsyncSession) -> str:
+    async def read_simulator_name(match_id: UUID, session: AsyncSession) -> str | None:
         """Read simulator name from match data
 
         Args:
@@ -575,9 +626,10 @@ class ReadData:
             return simulator_name
         except Exception as e:
             logging.error(f"Failed to read simulator name: {e}")
+            return None
 
     @staticmethod
-    async def read_simualtor_id(simulator_name: str, session: AsyncSession) -> UUID:
+    async def read_simulator_id(simulator_name: str, session: AsyncSession) -> UUID | None:
         """Read simulator id from simulator name(fcv1)
 
         Args:
@@ -635,7 +687,7 @@ class ReadData:
 
 class CreateData:
     @staticmethod
-    async def create_match_data(match: MatchDataSchema, session: AsyncSession):
+    async def create_match_data(match: MatchDataSchema, session: AsyncSession) -> bool:
         """Create match data with score, tournament, simulator data
 
         Args:
@@ -675,18 +727,61 @@ class CreateData:
                 physical_simulator_id=match.physical_simulator_id,
                 tournament_id=match.tournament_id,
                 match_name=match.match_name,
+                game_mode=match.game_mode,
                 created_at=match.created_at,
                 started_at=match.started_at,
             )
-            session.add_all([new_score, new_tournament, new_match])
+
+            new_md_settings = None
+            if getattr(match, "mix_doubles_settings", None) is not None:
+                md = match.mix_doubles_settings
+                # At match creation time, power play is always unused, so both values must be None (DB NULL).
+                # They are set to an end_number only when a team consumes power play during /end-setup.
+                new_md_settings = MatchMixDoublesSettings(
+                    match_id=match.match_id,
+                    positioned_stones_pattern=md.positioned_stones_pattern,
+                    team0_power_play_end=None,
+                    team1_power_play_end=None,
+                )
+
+            items = [new_score, new_tournament, new_match]
+            if new_md_settings is not None:
+                items.append(new_md_settings)
+
+            session.add_all(items)
             await session.commit()
+            return True
 
         except Exception as e:
             await session.rollback()
             logging.error(f"Failed to create match data: {e}")
+            return False
 
     @staticmethod
-    async def create_state_data(state: StateSchema, session: AsyncSession):
+    async def create_mix_doubles_end_setup(
+        match_id: UUID,
+        end_number: int,
+        end_setup_team_id: UUID,
+        session: AsyncSession,
+    ) -> bool:
+        """Create a mixed doubles per-end setup row."""
+        try:
+            row = MatchMixDoublesEndSetup(
+                match_id=match_id,
+                end_number=end_number,
+                end_setup_team_id=end_setup_team_id,
+                setup_done=False,
+            )
+            session.add(row)
+            await session.commit()
+            return True
+        except Exception as e:
+            await session.rollback()
+            logging.error(f"Failed to create mix doubles end setup: {e}")
+            return False
+
+    @staticmethod
+    async def create_state_data(state: StateSchema, session: AsyncSession) -> bool:
         """Create state data with stone coordinate data
 
         Args:
@@ -694,18 +789,9 @@ class CreateData:
             session (AsyncSession): AsyncSession object to interact with database
         """
         try:
-            stone_coordinate_data = state.stone_coordinate.data
-            for _ in range(2):
-                if not isinstance(stone_coordinate_data, str):
-                    break
-                try:
-                    stone_coordinate_data = json.loads(stone_coordinate_data)
-                except json.JSONDecodeError:
-                    break
-
             new_stone_coordinate = StoneCoordinate(
                 stone_coordinate_id=state.stone_coordinate.stone_coordinate_id,
-                data=stone_coordinate_data,
+                data=state.stone_coordinate.data,
             )
 
             new_state = State(
@@ -727,9 +813,61 @@ class CreateData:
             )
             session.add_all([new_stone_coordinate, new_state])
             await session.commit()
+            return True
         except Exception as e:
             await session.rollback()
             logging.error(f"Failed to create state data: {e}")
+            return False
+
+    @staticmethod
+    async def add_state_data(state: StateSchema, session: AsyncSession) -> None:
+        """Add state + stone coordinate rows to the current transaction without committing.
+
+        This is used when the caller wants atomic multi-step updates under a DB lock.
+        """
+        new_stone_coordinate = StoneCoordinate(
+            stone_coordinate_id=state.stone_coordinate.stone_coordinate_id,
+            data=state.stone_coordinate.data,
+        )
+
+        new_state = State(
+            state_id=state.state_id,
+            winner_team_id=state.winner_team_id,
+            match_id=state.match_id,
+            end_number=state.end_number,
+            shot_number=state.shot_number,
+            total_shot_number=state.total_shot_number,
+            first_team_remaining_time=state.first_team_remaining_time,
+            second_team_remaining_time=state.second_team_remaining_time,
+            first_team_extra_end_remaining_time=state.first_team_extra_end_remaining_time,
+            second_team_extra_end_remaining_time=state.second_team_extra_end_remaining_time,
+            stone_coordinate_id=state.stone_coordinate_id,
+            score_id=state.score_id,
+            shot_id=state.shot_id,
+            next_shot_team_id=state.next_shot_team_id,
+            created_at=state.created_at,
+        )
+
+        session.add_all([new_stone_coordinate, new_state])
+
+    @staticmethod
+    async def add_shot_info_data(shot_info: ShotInfoSchema, session: AsyncSession) -> None:
+        """Add shot_info row to the current transaction without committing."""
+
+        new_shot_info = ShotInfo(
+            shot_id=shot_info.shot_id,
+            player_id=shot_info.player_id,
+            team_id=shot_info.team_id,
+            trajectory_id=shot_info.trajectory_id,
+            pre_shot_state_id=shot_info.pre_shot_state_id,
+            post_shot_state_id=shot_info.post_shot_state_id,
+            actual_translational_velocity=shot_info.actual_translational_velocity,
+            actual_shot_angle=shot_info.actual_shot_angle,
+            translational_velocity=shot_info.translational_velocity,
+            shot_angle=shot_info.shot_angle,
+            angular_velocity=shot_info.angular_velocity,
+        )
+        session.add(new_shot_info)
 
     @staticmethod
     async def create_stone_data(stone: StoneCoordinateSchema, session: AsyncSession):
@@ -740,27 +878,20 @@ class CreateData:
             session (AsyncSession): AsyncSession object to interact with database
         """
         try:
-            stone_coordinate_data = stone.data
-            for _ in range(2):
-                if not isinstance(stone_coordinate_data, str):
-                    break
-                try:
-                    stone_coordinate_data = json.loads(stone_coordinate_data)
-                except json.JSONDecodeError:
-                    break
-
             new_stone = StoneCoordinate(
                 stone_coordinate_id=stone.stone_coordinate_id,
-                data=stone_coordinate_data,
+                data=stone.data,
             )
             session.add(new_stone)
             await session.commit()
+            return True
         except Exception as e:
             await session.rollback()
             logging.error(f"Failed to create stone data: {e}")
+            return False
 
     @staticmethod
-    async def create_score_data(score: ScoreSchema, session: AsyncSession):
+    async def create_score_data(score: ScoreSchema, session: AsyncSession) -> bool:
         """Create score data
 
         Args:
@@ -775,12 +906,14 @@ class CreateData:
             )
             session.add(new_score)
             await session.commit()
+            return True
         except Exception as e:
             await session.rollback()
             logging.error(f"Failed to create score data: {e}")
+            return False
 
     @staticmethod
-    async def create_shot_info_data(shot_info: ShotInfoSchema, session: AsyncSession):
+    async def create_shot_info_data(shot_info: ShotInfoSchema, session: AsyncSession) -> bool:
         """Create shot info data which is changed by dispersion rate
 
         Args:
@@ -803,9 +936,11 @@ class CreateData:
             )
             session.add(new_shot_info)
             await session.commit()
+            return True
         except Exception as e:
             await session.rollback()
             logging.error(f"Failed to create shot info data: {e}")
+            return False
 
     @staticmethod
     async def create_tournament_data(
@@ -824,9 +959,11 @@ class CreateData:
             )
             session.add(new_tournament)
             await session.commit()
+            return True
         except Exception as e:
             await session.rollback()
             logging.error(f"Failed to create tournament data: {e}")
+            return False
 
     @staticmethod
     async def create_physical_simulator_data(
@@ -851,12 +988,14 @@ class CreateData:
                 )
                 session.add(new_simulator)
                 await session.commit()
+            return True
         except Exception as e:
             await session.rollback()
             logging.error(f"Failed to create physical simulator data: {e}")
+            return False
 
     @staticmethod
-    async def create_default_player_data(player: PlayerSchema, session: AsyncSession):
+    async def create_default_player_data(player: PlayerSchema, session: AsyncSession) -> bool:
         """Create default player data to use learning AI
 
         Args:
@@ -879,12 +1018,14 @@ class CreateData:
                 )
                 session.add(new_player)
                 await session.commit()
+            return True
         except Exception as e:
             await session.rollback()
             logging.error(f"Failed to create default player data: {e}")
+            return False
 
     @staticmethod
-    async def create_player_data(player: PlayerSchema, session: AsyncSession):
+    async def create_player_data(player: PlayerSchema, session: AsyncSession) -> bool:
         """Create player data with player name, team id, max velocity, shot dispersion rate
 
         Args:
@@ -902,9 +1043,11 @@ class CreateData:
             )
             session.add(new_player)
             await session.commit()
+            return True
         except Exception as e:
             await session.rollback()
             logging.error(f"Failed to create player data: {e}")
+            return False
 
 
 class CollectID:
@@ -925,3 +1068,4 @@ class CollectID:
 
         except Exception as e:
             logging.error(f"Failed to collect state ids: {e}")
+            return []

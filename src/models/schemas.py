@@ -1,6 +1,7 @@
 from sqlalchemy.orm import DeclarativeBase, relationship
+from sqlalchemy import ForeignKey
 from sqlalchemy.schema import Column
-from sqlalchemy.types import Integer, String, Uuid, Float, DateTime, TEXT
+from sqlalchemy.types import Integer, String, Uuid, Float, DateTime, TEXT, Boolean
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from uuid import uuid4
 from uuid6 import uuid7
@@ -19,28 +20,31 @@ class Match(Base):
     first_team_id = Column(Uuid, default=uuid4)
     first_team_player1_id = Column(Uuid, default=uuid4)
     first_team_player2_id = Column(Uuid, default=uuid4)
-    first_team_player3_id = Column(Uuid, default=uuid4)
-    first_team_player4_id = Column(Uuid, default=uuid4)
+    # Optional in mixed doubles (2 players/team). Do not auto-generate IDs.
+    first_team_player3_id = Column(Uuid, nullable=True)
+    first_team_player4_id = Column(Uuid, nullable=True)
     second_team_id = Column(Uuid, default=uuid4)
     second_team_player1_id = Column(Uuid, default=uuid4)
     second_team_player2_id = Column(Uuid, default=uuid4)
-    second_team_player3_id = Column(Uuid, default=uuid4)
-    second_team_player4_id = Column(Uuid, default=uuid4)
+    # Optional in mixed doubles (2 players/team). Do not auto-generate IDs.
+    second_team_player3_id = Column(Uuid, nullable=True)
+    second_team_player4_id = Column(Uuid, nullable=True)
     winner_team_id = Column(Uuid, nullable=True)
     score_id = Column(Uuid, default=uuid7)
     time_limit = Column(Float)
     extra_end_time_limit = Column(Float)
     standard_end_count = Column(Integer)
-    applied_rule = Column(Integer)  # 0: five_rock_rule, 1: no tick rule
+    applied_rule = Column(Integer)  # 0: five_rock_rule, 1: no_tick_rule, 2: modified_fgz (mixed doubles)
     physical_simulator_id = Column(Uuid, default=uuid4)
     tournament_id = Column(Uuid, default=uuid7)
     match_name = Column(String)
+    game_mode = Column(String, default="standard")
     created_at = Column(DateTime, default=datetime.now)
     started_at = Column(DateTime, default=datetime.now)
 
     state = relationship(
         "State",
-        primaryjoin="foreign(Match.match_id) == State.match_id",
+        primaryjoin="Match.match_id == foreign(State.match_id)",
         back_populates="match",
         cascade="all, delete",
     )
@@ -110,6 +114,51 @@ class Match(Base):
         primaryjoin="foreign(Match.tournament_id) == Tournament.tournament_id",
         back_populates="match",
         cascade="all, delete",
+    )
+
+    mix_doubles_settings = relationship(
+        "MatchMixDoublesSettings",
+        primaryjoin="Match.match_id == foreign(MatchMixDoublesSettings.match_id)",
+        back_populates="match",
+        cascade="all, delete",
+        uselist=False,
+    )
+
+    mix_doubles_end_setups = relationship(
+        "MatchMixDoublesEndSetup",
+        primaryjoin="Match.match_id == foreign(MatchMixDoublesEndSetup.match_id)",
+        back_populates="match",
+        cascade="all, delete",
+    )
+
+
+class MatchMixDoublesSettings(Base):
+    __tablename__ = "match_mix_doubles_settings"
+
+    match_id = Column(Uuid, ForeignKey("match_data.match_id", ondelete="CASCADE"), primary_key=True)
+    positioned_stones_pattern = Column(Integer, nullable=False)
+    team0_power_play_end = Column(Integer, nullable=True)
+    team1_power_play_end = Column(Integer, nullable=True)
+
+    match = relationship(
+        "Match",
+        primaryjoin="foreign(MatchMixDoublesSettings.match_id) == Match.match_id",
+        back_populates="mix_doubles_settings",
+    )
+
+
+class MatchMixDoublesEndSetup(Base):
+    __tablename__ = "match_mix_doubles_end_setup"
+
+    match_id = Column(Uuid, ForeignKey("match_data.match_id", ondelete="CASCADE"), primary_key=True)
+    end_number = Column(Integer, primary_key=True)
+    end_setup_team_id = Column(Uuid, nullable=False)
+    setup_done = Column(Boolean, default=False, nullable=False)
+
+    match = relationship(
+        "Match",
+        primaryjoin="foreign(MatchMixDoublesEndSetup.match_id) == Match.match_id",
+        back_populates="mix_doubles_end_setups",
     )
 
 
@@ -215,7 +264,7 @@ class State(Base):
 
     match = relationship(
         "Match",
-        primaryjoin="State.match_id == foreign(Match.match_id)",
+        primaryjoin="foreign(State.match_id) == Match.match_id",
         back_populates="state",
         cascade="all, delete",
     )

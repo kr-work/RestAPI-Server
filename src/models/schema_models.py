@@ -76,8 +76,8 @@ class StateSchema(BaseModel):
     winner_team_id: UUID | None
     match_id: UUID
     end_number: int
-    shot_number: int
-    total_shot_number: int
+    shot_number: int | None
+    total_shot_number: int | None
     first_team_remaining_time: float
     second_team_remaining_time: float
     first_team_extra_end_remaining_time: float
@@ -94,6 +94,15 @@ class StateSchema(BaseModel):
         from_attributes = True
 
 
+class MatchMixDoublesSettingsSchema(BaseModel):
+    positioned_stones_pattern: int
+    team0_power_play_end: int | None = None
+    team1_power_play_end: int | None = None
+
+    class Config:
+        from_attributes = True
+
+
 class MatchDataSchema(BaseModel):
     match_id: UUID
     first_team_name: str | None
@@ -101,13 +110,14 @@ class MatchDataSchema(BaseModel):
     first_team_id: UUID
     first_team_player1_id: UUID
     first_team_player2_id: UUID
-    first_team_player3_id: UUID
-    first_team_player4_id: UUID
+    # Mixed doubles uses only 2 players per team.
+    first_team_player3_id: UUID | None = None
+    first_team_player4_id: UUID | None = None
     second_team_id: UUID
     second_team_player1_id: UUID
     second_team_player2_id: UUID
-    second_team_player3_id: UUID
-    second_team_player4_id: UUID
+    second_team_player3_id: UUID | None = None
+    second_team_player4_id: UUID | None = None
     winner_team_id: UUID | None
     score_id: UUID
     time_limit: float
@@ -117,11 +127,13 @@ class MatchDataSchema(BaseModel):
     applied_rule: int
     tournament_id: UUID
     match_name: str
+    game_mode: str = "standard"
     created_at: datetime
     started_at: datetime
     score: Optional[ScoreSchema] = None
     tournament: Optional[TournamentSchema] = None
     simulator: Optional[PhysicalSimulatorSchema] = None
+    mix_doubles_settings: Optional[MatchMixDoublesSettingsSchema] = None
 
     class Config:
         from_attributes = True

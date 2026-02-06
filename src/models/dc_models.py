@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from enum import Enum
 from uuid import UUID
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Literal
 
 
 class MatchNameModel(str, Enum):
@@ -12,6 +12,12 @@ class MatchNameModel(str, Enum):
 class AppliedRuleModel(str, Enum):
     five_rock_rule = "five_rock_rule"  # Applied Five Rock Rule
     no_tick_rule = "no_tick_rule"  # Applied No Tick Rule
+    modified_fgz = "modified_fgz"  # Mixed doubles only
+
+
+class GameModeModel(str, Enum):
+    standard = "standard"
+    mix_doubles = "mix_doubles"
 
 
 class TournamentModel(BaseModel):
@@ -61,16 +67,33 @@ class ShotInfoModel(BaseModel):
     shot_angle: float
 
 
+class PowerPlayEndModel(BaseModel):
+    team0: int | None = None
+    team1: int | None = None
+
+
+class MixDoublesSettingsModel(BaseModel):
+    end_setup_team: str
+    positioned_stones_pattern: int
+    power_play_end: PowerPlayEndModel
+
+
+class EndSetupRequestModel(BaseModel):
+    selector_throws_first: bool
+    power_play_side: Optional[Literal["left", "right"]] = None
+
+
 class StateModel(BaseModel):
     winner_team: str | None
     end_number: int
-    shot_number: int
-    total_shot_number: int
+    shot_number: int | None
+    total_shot_number: int | None
     next_shot_team: str | None
     first_team_remaining_time: float
     second_team_remaining_time: float
     first_team_extra_end_remaining_time: float
     second_team_extra_end_remaining_time: float
+    mix_doubles_settings: Optional[MixDoublesSettingsModel] = None
     last_move: Optional[ShotInfoModel] = None
     stone_coordinate: Optional[StoneCoordinateModel] = None
     score: Optional[ScoreModel] = None
@@ -91,11 +114,13 @@ class TeamModel(BaseModel):
     team_name: str
     player1: PlayerModel
     player2: PlayerModel
-    player3: PlayerModel
-    player4: PlayerModel
+    # Mixed doubles uses only 2 players per team; allow omitting player3/player4.
+    player3: Optional[PlayerModel] = None
+    player4: Optional[PlayerModel] = None
 
 
 class ClientDataModel(BaseModel):
+    game_mode: GameModeModel
     tournament: TournamentNameModel
     simulator: PhysicalSimulatorNameModel
     applied_rule: AppliedRuleModel
@@ -103,6 +128,7 @@ class ClientDataModel(BaseModel):
     extra_end_time_limit: float
     standard_end_count: int
     match_name: str
+    positioned_stones_pattern: Optional[int] = None
 
 
 class MatchModel(BaseModel):
@@ -112,6 +138,8 @@ class MatchModel(BaseModel):
     standard_end_count: int
     match_name: str
     applied_rule: AppliedRuleModel
+    game_mode: Optional[GameModeModel] = None
+    mix_doubles_settings: Optional[MixDoublesSettingsModel] = None
     score: Optional[ScoreModel] = None
     simulator: Optional[PhysicalSimulatorModel] = None
     tournament: Optional[TournamentModel] = None

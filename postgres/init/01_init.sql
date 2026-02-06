@@ -56,13 +56,13 @@ CREATE TABLE IF NOT EXISTS match_data (
     first_team_id UUID DEFAULT gen_random_uuid(),
     first_team_player1_id UUID DEFAULT gen_random_uuid(),
     first_team_player2_id UUID DEFAULT gen_random_uuid(),
-    first_team_player3_id UUID DEFAULT gen_random_uuid(),
-    first_team_player4_id UUID DEFAULT gen_random_uuid(),
+    first_team_player3_id UUID NULL,
+    first_team_player4_id UUID NULL,
     second_team_id UUID DEFAULT gen_random_uuid(),
     second_team_player1_id UUID DEFAULT gen_random_uuid(),
     second_team_player2_id UUID DEFAULT gen_random_uuid(),
-    second_team_player3_id UUID DEFAULT gen_random_uuid(),
-    second_team_player4_id UUID DEFAULT gen_random_uuid(),
+    second_team_player3_id UUID NULL,
+    second_team_player4_id UUID NULL,
     winner_team_id UUID,
     score_id UUID DEFAULT gen_random_uuid(),
     time_limit DOUBLE PRECISION,
@@ -72,8 +72,37 @@ CREATE TABLE IF NOT EXISTS match_data (
     physical_simulator_id UUID DEFAULT gen_random_uuid(),
     tournament_id UUID DEFAULT gen_random_uuid(),
     match_name VARCHAR,
+    game_mode TEXT DEFAULT 'standard',
     created_at TIMESTAMP DEFAULT NOW(),
     started_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Mixed Doubles Settings (only exists for game_mode='mix_doubles')
+CREATE TABLE IF NOT EXISTS match_mix_doubles_settings (
+    match_id UUID PRIMARY KEY,
+  positioned_stones_pattern INTEGER NOT NULL,
+    team0_power_play_end INTEGER NULL,
+    team1_power_play_end INTEGER NULL
+);
+
+ALTER TABLE match_mix_doubles_settings
+  ADD CONSTRAINT chk_md_settings_pattern
+    CHECK (positioned_stones_pattern BETWEEN 0 AND 5);
+
+ALTER TABLE match_mix_doubles_settings
+  ADD CONSTRAINT chk_md_settings_pp_end
+    CHECK (
+      (team0_power_play_end IS NULL OR team0_power_play_end >= 0)
+      AND (team1_power_play_end IS NULL OR team1_power_play_end >= 0)
+    );
+
+-- Mixed Doubles End Setup (per end; controls who can run end-setup in the current end)
+CREATE TABLE IF NOT EXISTS match_mix_doubles_end_setup (
+    match_id UUID NOT NULL,
+    end_number INTEGER NOT NULL,
+    end_setup_team_id UUID NOT NULL,
+    setup_done BOOLEAN NOT NULL DEFAULT FALSE,
+    PRIMARY KEY(match_id, end_number)
 );
 
 -- ShotInfo
@@ -143,3 +172,13 @@ ALTER TABLE state
     FOREIGN KEY(score_id) REFERENCES score(score_id) ON DELETE CASCADE,
   ADD CONSTRAINT fk_state_stone_coord
     FOREIGN KEY(stone_coordinate_id) REFERENCES stone_coordinate(stone_coordinate_id) ON DELETE CASCADE;
+
+-- match_mix_doubles_settings → match_data
+ALTER TABLE match_mix_doubles_settings
+  ADD CONSTRAINT fk_md_settings_match
+    FOREIGN KEY(match_id) REFERENCES match_data(match_id) ON DELETE CASCADE;
+
+-- match_mix_doubles_end_setup → match_data
+ALTER TABLE match_mix_doubles_end_setup
+  ADD CONSTRAINT fk_md_end_setup_match
+    FOREIGN KEY(match_id) REFERENCES match_data(match_id) ON DELETE CASCADE;
