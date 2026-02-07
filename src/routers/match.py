@@ -163,6 +163,7 @@ class BaseServer:
         applied_rule_name: AppliedRuleModel = None
         applied_rule: int = None
 
+# ======= Validate client data =======
         simulator_id = await match_db.read_simulator_id(client_data.simulator.simulator_name)
         if simulator_id is None:
             raise not_found("Simulator not found.")
@@ -189,7 +190,7 @@ class BaseServer:
             raise bad_request(
                 'Invalid applied rule. Please choose "five_rock_rule", "no_tick_rule", or "modified_fgz".'
             )
-        # logging.info(f"Applied rule: {applied_rule_name}")
+# ==================================
 
         # Add one score index for when the game goes into overtime
         team_score: List = [0] * (client_data.standard_end_count + 1)
@@ -555,6 +556,7 @@ class DCServer:
         player_number: int = int(total_shot_number / 4) + 1
         team_number: int = 0 if match_team_name == "team0" else 1
         next_end_first_shot_team_id: UUID = None
+        next_end_selector_team_id: UUID | None = None
 
         # Check player ID
         if match_data.game_mode == GameModeModel.mix_doubles.value:
@@ -721,7 +723,8 @@ class DCServer:
                     else match_data.second_team_id
                 )
 
-            # Mixed doubles: update which team has positioned-stones selection right for the next end.
+            # Mixed doubles: decide next end's positioned-stones selector.
+            # We persist it only if the match continues (winner not decided), right before we create the next end state.
             if match_data.game_mode == GameModeModel.mix_doubles.value:
                 current_selector = None
                 if (
@@ -736,27 +739,16 @@ class DCServer:
                     current_selector = match_data.second_team_id
 
                 if scored_team == 0:
-                    next_selector = match_data.second_team_id
+                    next_end_selector_team_id = match_data.second_team_id
                 elif scored_team == 1:
-                    next_selector = match_data.first_team_id
+                    next_end_selector_team_id = match_data.first_team_id
                 else:
-                    # Blank end: selection right moves (toggle).
-                    # If we can't read the current selector row (should be rare), fall back to toggling from team0->team1.
-                    if current_selector is None:
-                        next_selector = match_data.second_team_id
-                    else:
-                        next_selector = (
-                            match_data.second_team_id
-                            if current_selector == match_data.first_team_id
-                            else match_data.first_team_id
-                        )
-
-                next_end_number = end_number + 1
-                await match_db.set_end_setup_team_for_end(
-                    match_id=match_id,
-                    end_number=next_end_number,
-                    selector_team_id=next_selector,
-                )
+                    # Blank end: toggle selector.
+                    next_end_selector_team_id = (
+                        match_data.second_team_id
+                        if current_selector == match_data.first_team_id
+                        else match_data.first_team_id
+                    )
 
             if end_number < match_data.standard_end_count:
                 if scored_team == 0:
@@ -835,6 +827,15 @@ class DCServer:
         )
 
         if total_shot_number == total_shots_per_end and winner_team_id is None:
+            if (
+                match_data.game_mode == GameModeModel.mix_doubles.value
+                and next_end_selector_team_id is not None
+            ):
+                await match_db.set_end_setup_team_for_end(
+                    match_id=match_id,
+                    end_number=end_number + 1,
+                    selector_team_id=next_end_selector_team_id,
+                )
             await state_end_number_update(state_data, next_end_first_shot_team_id)
 
 

@@ -1,4 +1,5 @@
 from uuid6 import uuid7
+from uuid import UUID
 
 from src.models.dc_models import (
     ScoreModel,
@@ -95,7 +96,8 @@ class DataConverter:
         ):
             ids = match_data.mix_doubles_settings.end_setup_team_ids
             if isinstance(ids, list) and 0 <= int(state_data.end_number) < len(ids):
-                end_setup_team_id = ids[int(state_data.end_number)]
+                # JSONB stores UUIDs as strings; be defensive and normalize to UUID.
+                end_setup_team_id = UUID(str(ids[int(state_data.end_number)]))
 
         state_model: StateModel = StateModel(
             winner_team=winner_team_name,

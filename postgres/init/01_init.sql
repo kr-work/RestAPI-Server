@@ -174,3 +174,14 @@ ALTER TABLE state
 ALTER TABLE match_mix_doubles_settings
   ADD CONSTRAINT fk_md_settings_match
     FOREIGN KEY(match_id) REFERENCES match_data(match_id) ON DELETE CASCADE;
+
+-- ======================================
+-- 4) Indexes for read APIs
+-- ======================================
+-- Search by match_name, and pick latest match quickly.
+CREATE INDEX IF NOT EXISTS idx_match_data_match_name_started_at
+  ON match_data (match_name, started_at DESC);
+
+-- Efficient per-end retrieval and ordering.
+CREATE INDEX IF NOT EXISTS idx_state_match_end_shot
+  ON state (match_id, end_number, shot_number);

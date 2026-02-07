@@ -1,6 +1,7 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import logging
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
@@ -69,6 +70,14 @@ async def lifespan(app):
 # loop.create_task(cd.create_table())
 
 app = FastAPI(lifespan=lifespan)
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    # NOTE: Raising exceptions does not stop the server process; it fails only the request.
+    # This handler ensures we log the traceback and return a consistent 500 response.
+    logging.exception("Unhandled exception: %s %s", request.method, request.url)
+    return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
 # app.add_middleware(HTTPSRedirectMiddleware)
 app.include_router(match.match_router)
 app.include_router(restapi.rest_router)

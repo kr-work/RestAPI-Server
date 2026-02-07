@@ -285,6 +285,29 @@ class UpdateData:
 
 class ReadData:
     @staticmethod
+    async def read_mix_doubles_settings_row_for_update(
+        match_id: UUID, session: AsyncSession
+    ) -> MatchMixDoublesSettings | None:
+        """Read MatchMixDoublesSettings row with row-level lock.
+
+        This is intended for service-layer transactions (session.begin()) that need to
+        update selector list / power play usage atomically.
+
+        Returns:
+            MatchMixDoublesSettings | None: ORM row (NOT a Schema model).
+        """
+
+        stmt = (
+            select(MatchMixDoublesSettings)
+            .where(MatchMixDoublesSettings.match_id == match_id)
+            .with_for_update()
+        )
+        result = await session.execute(stmt)
+        if result is None:
+            return None
+        return result.scalars().first()
+
+    @staticmethod
     async def read_match_data(
         match_id: UUID, session: AsyncSession
     ) -> MatchDataSchema | None:
